@@ -26,6 +26,11 @@ jobs:
       - name: Trust checked-out workspace in the build container
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
+      - name: Install host test dependencies
+        run: |
+          apt-get update
+          apt-get install --yes --no-install-recommends zlib1g-dev
+
       - name: Resolve application version
         id: version
         run: echo "value=$(make --no-print-directory print-version)" >> "$GITHUB_OUTPUT"
