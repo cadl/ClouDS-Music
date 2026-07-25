@@ -26,7 +26,8 @@ ClouDS Music 是一款面向 Nintendo 3DS 的原生网易云音乐 homebrew 客�
 ## 下载与安装
 
 请从项目的 [GitHub Releases](https://github.com/cadl/ClouDS-Music/releases)
-下载官方版本，并使用 `SHA256SUMS` 核对文件。
+下载官方版本。每个版本提供可独立下载的 `.3dsx`、`.cia` 和 `.smdh`，同时保留包含
+全部二进制与许可文本的 ZIP、完整源码包和 `SHA256SUMS`；请用摘要核对文件。
 
 Homebrew Launcher 用户将 `ClouDS-Music.3dsx` 放到：
 

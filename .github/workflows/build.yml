@@ -42,6 +42,9 @@ jobs:
         with:
           name: ClouDS-Music-release
           path: |
+            dist/ClouDS-Music.3dsx
+            dist/ClouDS-Music.cia
+            dist/ClouDS-Music.smdh
             dist/ClouDS-Music-${{ steps.version.outputs.value }}.zip
             dist/ClouDS-Music-${{ steps.version.outputs.value }}-source.tar.gz
             dist/SHA256SUMS
@@ -68,6 +71,9 @@ jobs:
           APP_VERSION: ${{ needs.build.outputs.version }}
         run: |
           gh release upload "$RELEASE_TAG" \
+            dist/ClouDS-Music.3dsx \
+            dist/ClouDS-Music.cia \
+            dist/ClouDS-Music.smdh \
             "dist/ClouDS-Music-${APP_VERSION}.zip" \
             "dist/ClouDS-Music-${APP_VERSION}-source.tar.gz" \
             dist/SHA256SUMS --clobber

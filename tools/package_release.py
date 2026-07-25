@@ -277,6 +277,20 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def copy_binary_assets(project_root: Path, output_dir: Path) -> list[Path]:
+    assets: list[Path] = []
+    for name in BINARY_FILES:
+        source = project_root / name
+        destination = output_dir / name
+        require_regular_file(source)
+        shutil.copyfile(source, destination)
+        require_regular_file(destination)
+        if sha256(source) != sha256(destination):
+            raise PackageError(f"copied release asset does not match: {name}")
+        assets.append(destination)
+    return assets
+
+
 def verify_archives(binary_zip: Path, source_tar: Path, version: str) -> None:
     binary_required = {
         f"ClouDS-Music-{version}/LICENSE",
@@ -341,7 +355,8 @@ def main() -> int:
     source_name = f"ClouDS-Music-{args.version}-source.tar.gz"
     checksum_name = "SHA256SUMS"
     verify_output_directory(
-        output_dir, {binary_name, source_name, checksum_name}
+        output_dir,
+        {binary_name, source_name, checksum_name, *BINARY_FILES},
     )
 
     worktree_status = git_output(
@@ -375,13 +390,15 @@ def main() -> int:
         source_entries(project_root, epoch, args.allow_dirty),
         epoch,
     )
+    binary_assets = copy_binary_assets(project_root, output_dir)
 
     verify_archives(binary_zip, source_tar, args.version)
     checksums = output_dir / checksum_name
     checksum_text = "".join(
         f"{sha256(path)}  {path.name}\n"
         for path in sorted(
-            (binary_zip, source_tar), key=lambda item: item.name
+            (binary_zip, source_tar, *binary_assets),
+            key=lambda item: item.name,
         )
     )
     with checksums.open("w", encoding="utf-8", newline="\n") as output:
