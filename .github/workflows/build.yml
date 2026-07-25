@@ -84,4 +84,5 @@ jobs:
             dist/ClouDS-Music.smdh \
             "dist/ClouDS-Music-${APP_VERSION}.zip" \
             "dist/ClouDS-Music-${APP_VERSION}-source.tar.gz" \
-            dist/SHA256SUMS --clobber
+            dist/SHA256SUMS \
+            --clobber --repo "$GITHUB_REPOSITORY"
