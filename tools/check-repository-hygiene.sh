@@ -3,6 +3,10 @@ set -euo pipefail
 
 PROJECT_ROOT=$(cd "$(dirname "$0")/.." && pwd)
 status=0
+tracked_files=$(git -C "$PROJECT_ROOT" ls-files) || {
+    echo "error: unable to list tracked repository files" >&2
+    exit 1
+}
 
 while IFS= read -r path; do
     basename=${path##*/}
@@ -12,7 +16,7 @@ while IFS= read -r path; do
             status=1
             ;;
     esac
-done < <(git -C "$PROJECT_ROOT" ls-files)
+done <<< "$tracked_files"
 
 if [[ "$status" != 0 ]]; then
     exit 1

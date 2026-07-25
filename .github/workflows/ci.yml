@@ -14,7 +14,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test-and-build:
+  host-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source and minimp3
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Install host test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes zlib1g-dev
+
+      - name: Run host-side tests
+        run: |
+          make repo-check
+          make host-test
+
+  build-3dsx:
     runs-on: ubuntu-latest
     container:
       # Keep this digest aligned with Makefile and the release workflow.
@@ -25,11 +44,6 @@ jobs:
         with:
           submodules: recursive
           persist-credentials: false
-
-      - name: Run host-side tests
-        run: |
-          make repo-check
-          make host-test
 
       - name: Build 3DSX
         run: make -j2
