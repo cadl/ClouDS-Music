@@ -1,0 +1,32 @@
+title = "ClouDS Music secret scanning"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "netease-music-u-cookie"
+description = "Reusable NetEase MUSIC_U session credential"
+regex = '''(?i)MUSIC_U\s*[=:]\s*["']?([A-Za-z0-9_%.-]{20,})'''
+secretGroup = 1
+keywords = ["MUSIC_U"]
+
+[[rules]]
+id = "netease-qr-codekey"
+description = "NetEase QR login codekey"
+regex = '''(?i)codekey\s*[=:]\s*["']?([A-Za-z0-9_-]{20,})'''
+secretGroup = 1
+keywords = ["codekey"]
+
+[[rules]]
+id = "generic-api-key"
+
+  [[rules.allowlists]]
+  description = "Public WEAPI protocol test vectors"
+  paths = ['''(?:^|/)tests/test_weapi\.c$''']
+
+[allowlist]
+description = "Ignored build and download directories"
+paths = [
+  '''(?:^|/)(?:\.tools|build|build-old3ds-stress|data|dist)(?:/|$)''',
+  '''(?:^|/)ClouDS-Music\.(?:3dsx|cia|elf|smdh|bnr)$''',
+]

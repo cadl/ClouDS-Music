@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/cadl/ClouDS-Music/security
+    about: Use private vulnerability reporting when available; do not post credentials publicly.

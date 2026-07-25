@@ -1,0 +1,17 @@
+# Characters seen in musician, performer and other personal names. Whitespace
+# is ignored. Keep this list curated: common Traditional forms are added from
+# the pinned OpenCC STCharacters mapping by fetch-content-font.sh.
+
+# Given names, stage names and uncommon name forms
+喆 甯 祎 禕 旻 昱 昕 晟 曦 曜 燚 燊 煜 烨 煊 熹
+玥 玮 珺 琰 琛 琦 琮 瑜 瑾 璟 璇 鋆 堃 頔 湉 媞 妤
+赟 懿 臻 彧 垚 淼 焱 翊 翎 骞 皓 宸 轶 斐 苒 芃
+菡 莞 菀 蓁 婧 妍 嫣 姝 媛 娴 琎 珅 珩 瑀 瑢 璠
+禛 祺 筱 芷 苡 荞 莘 葳 蕙 蘅 谌 锴 镕 霁 颢
+骁 骅 骐 骥 䶮 龘
+
+# Uncommon surnames and surname variants
+亓 仝 佟 郗 郜 邰 邴 郇 郄 禤 眭 璩 蒯 缑 厍 訾 谯 逯
+
+# Less-common characters observed in Chinese-language music metadata
+霑 隽 筠 莹 萨 郁 弦

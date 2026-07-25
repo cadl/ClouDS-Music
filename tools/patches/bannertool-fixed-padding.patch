@@ -1,0 +1,12 @@
+diff --git a/source/3ds/lz11.cpp b/source/3ds/lz11.cpp
+--- a/source/3ds/lz11.cpp
++++ b/source/3ds/lz11.cpp
+@@ -112,7 +112,7 @@ DatVec lz11_compress(const DatVec& input) {
+ 
+ 	if(compressedLength % 4 != 0) {
+ 		u32 padLength = 4 - (compressedLength % 4);
+-		u8 pad[padLength] = {0};
++		u8 pad[4] = {0};
+ 		ss.write((char*) pad, padLength);
+ 		compressedLength += padLength;
+ 	}

@@ -1,0 +1,31 @@
+diff --git a/makerom/src/user_settings.c b/makerom/src/user_settings.c
+--- a/makerom/src/user_settings.c
++++ b/makerom/src/user_settings.c
+@@ -1,6 +1,17 @@
+ #include "lib.h"
+ #include "version.h"
+ 
++/* version.h uses VER_MAJOR/VER_MINOR for makerom's own version, while
++ * user_settings.h uses the same names as CIA title-version array indices. */
++enum {
++	MAKEROM_VERSION_MAJOR = VER_MAJOR,
++	MAKEROM_VERSION_MINOR = VER_MINOR,
++	MAKEROM_VERSION_PATCH = VER_PATCH,
++};
++#undef VER_MAJOR
++#undef VER_MINOR
++#undef VER_PATCH
++
+ // Private Constants
+ static const u32 DEFAULT_STACK_SIZE = 0x1000;
+ 
+@@ -933,7 +942,8 @@ void PrintNoNeedParam(char *arg)
+ 
+ void DisplayBanner(void)
+ {
+-	printf("%s v%d.%d.%d (C) %s\n", APP_NAME, VER_MAJOR, VER_MINOR, VER_PATCH, AUTHORS);
++	printf("%s v%d.%d.%d (C) %s\n", APP_NAME, MAKEROM_VERSION_MAJOR,
++		MAKEROM_VERSION_MINOR, MAKEROM_VERSION_PATCH, AUTHORS);
+ 	printf("Built: %s %s\n\n", __TIME__, __DATE__);
+ }
+ 

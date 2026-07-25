@@ -1,0 +1,64 @@
+name: Bug report
+description: Report a reproducible ClouDS Music problem
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not attach `auth.bin`, `MUSIC_U`, cookies, QR keys, complete media URLs, `dspfirm.cdc`, firmware, or copyrighted media.
+  - type: input
+    id: version
+    attributes:
+      label: ClouDS Music version
+      placeholder: "1.1.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Environment
+      options:
+        - Old 3DS / Old 3DS XL
+        - 2DS
+        - New 3DS / New 3DS XL
+        - New 2DS XL
+        - Azahar emulator
+        - Other 3DS emulator
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: What happened?
+      description: Include the complete on-screen error text and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      placeholder: |
+        1. Open ...
+        2. Select ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Hardware and network context
+      description: Include console model, CFW/Luma version, SD-card details, Wi-Fi state, headphones, sleep/resume, and whether the problem reproduces on real hardware.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Minimal redacted diagnostics
+      description: Paste only the relevant, manually reviewed hardware.log lines. Remove account, device, URL, and authorization data.
+      render: text
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Sensitive-data check
+      options:
+        - label: I verified that this report contains no credentials, firmware, complete media URLs, private account data, or copyrighted media.
+          required: true

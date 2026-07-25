@@ -1,0 +1,30 @@
+name: Feature request
+description: Propose a focused improvement for ClouDS Music
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: Explain the user need rather than only the proposed implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: 3DS constraints and alternatives
+      description: Consider Old 3DS memory/CPU, SD-card I/O, input/focus, offline behavior, and private API stability.
+  - type: checkboxes
+    id: rights
+    attributes:
+      label: Service and content restrictions
+      options:
+        - label: This request does not ask to bypass VIP, region, purchase, copyright, or takedown restrictions.
+          required: true

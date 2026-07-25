@@ -1,0 +1,114 @@
+BasicInfo:
+  Title: CLOUDS
+  ProductCode: CTR-H-C10D
+  Logo: Homebrew
+
+RomFs:
+  RootPath: $(APP_ROMFS)
+
+TitleInfo:
+  Category: Application
+  UniqueId: 0xC10D5
+
+Option:
+  UseOnSD: true
+  FreeProductCode: false
+  MediaFootPadding: false
+  EnableCrypt: false
+  EnableCompress: true
+
+AccessControlInfo:
+  CoreVersion: 2
+  DescVersion: 2
+  ReleaseKernelMajor: "02"
+  ReleaseKernelMinor: "33"
+  UseExtSaveData: false
+
+  FileSystemAccess:
+    - DirectSdmc
+    - DirectSdmcWrite
+
+  MemoryType: Application
+  SystemMode: 64MB
+  IdealProcessor: 0
+  AffinityMask: 1
+  # makerom adds 32 for Application titles, resulting in kernel priority 48.
+  Priority: 16
+  MaxCpu: 0x9E
+  HandleTableSize: 0x200
+  DisableDebug: false
+  EnableForceDebug: false
+  CanWriteSharedPage: true
+  CanUsePrivilegedPriority: false
+  CanUseNonAlphabetAndNumber: true
+  PermitMainFunctionArgument: true
+  CanShareDeviceMemory: true
+  RunnableOnSleep: false
+  SpecialMemoryArrange: false
+
+  SystemModeExt: Legacy
+  CpuSpeed: 268MHz
+  EnableL2Cache: false
+  CanAccessCore2: false
+
+  IORegisterMapping:
+    - 1ff00000-1ff7ffff
+  MemoryMapping:
+    - 1f000000-1f5fffff:r
+
+  # Restricted to the SVC instructions present in the linked application.
+  SystemCallAccess:
+    ControlMemory: 1
+    QueryMemory: 2
+    ExitProcess: 3
+    CreateThread: 8
+    ExitThread: 9
+    SleepThread: 10
+    ReleaseMutex: 20
+    CreateEvent: 23
+    SignalEvent: 24
+    ClearEvent: 25
+    CreateMemoryBlock: 30
+    MapMemoryBlock: 31
+    UnmapMemoryBlock: 32
+    CreateAddressArbiter: 33
+    ArbitrateAddress: 34
+    CloseHandle: 35
+    WaitSynchronization1: 36
+    WaitSynchronizationN: 37
+    DuplicateHandle: 39
+    GetSystemTick: 40
+    GetSystemInfo: 42
+    ConnectToPort: 45
+    SendSyncRequest: 50
+    GetResourceLimit: 56
+    GetResourceLimitLimitValues: 57
+    GetResourceLimitCurrentValues: 58
+    Break: 60
+
+  ServiceAccessControl:
+    - APT:U
+    - ac:u
+    - cfg:u
+    - dsp::DSP
+    - fs:USER
+    - gsp::Gpu
+    - hid:USER
+    - ps:ps
+    - ptm:u
+    - soc:U
+
+SystemControlInfo:
+  SaveDataSize: 0KB
+  RemasterVersion: 0
+  StackSize: 0x40000
+
+  Dependency:
+    ac: 0x0004013000002402
+    cfg: 0x0004013000001702
+    dsp: 0x0004013000001a02
+    gsp: 0x0004013000001c02
+    hid: 0x0004013000001d02
+    ps: 0x0004013000003102
+    ptm: 0x0004013000002202
+    socket: 0x0004013000002e02
