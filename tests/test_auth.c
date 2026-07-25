@@ -37,7 +37,8 @@ int main(void) {
 
     char token[707];
     make_token(token, sizeof(token) - 1);
-    char response_cookie[sizeof(token) + 32];
+    char response_cookie[
+        sizeof(token) + sizeof("__csrf=test; MUSIC_U=; NMTID=test") - 1];
     snprintf(response_cookie, sizeof(response_cookie),
              "__csrf=test; MUSIC_U=%s; NMTID=test", token);
     assert(netease_set_music_u(&client, response_cookie) == 0);

@@ -1,3 +1,5 @@
+#define _POSIX_C_SOURCE 200809L
+
 #include "cache.h"
 #include "lyric_cache.h"
 #include "playlist.h"
@@ -8,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 typedef struct {
@@ -578,7 +581,9 @@ int main(void) {
     remove(lyric_cache_path);
 
     const char *root = "/tmp/nm3ds-cache-layout-v3-test";
-    char data[128], one_directory[128], two_directory[128];
+    char data[128];
+    char one_directory[sizeof(data) + 2];
+    char two_directory[sizeof(data) + 2];
     snprintf(data, sizeof(data), "%s/%s", root,
              NM3DS_CACHE_DATA_DIRECTORY);
     snprintf(one_directory, sizeof(one_directory), "%s/1", data);
