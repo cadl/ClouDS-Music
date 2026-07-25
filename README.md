@@ -8,9 +8,9 @@ ClouDS Music 是一款面向 Nintendo 3DS 的原生网易云音乐 homebrew 客�
 
 ## 界面预览
 
-公开新歌列表：
+正在播放、专辑封面与同步歌词：
 
-![公开新歌列表](docs/screenshots/discover-public-new-songs.png)
+![正在播放、专辑封面与同步歌词](docs/screenshots/now-playing-lyrics.png)
 
 搜索与本地拼音输入：
 
