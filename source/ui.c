@@ -1281,7 +1281,7 @@ static void draw_now(Ui *ui, const AppState *app,
         const char *empty = "选择歌曲后显示同步歌词";
         if (song) {
             if (app->lyric_song_id == song->id)
-                empty = "暂无同步歌词";
+                empty = "暂无歌词";
             else if (waiting_for_playback(app) ||
                      app->extras_song_id == song->id)
                 empty = "正在加载同步歌词";
@@ -1642,27 +1642,123 @@ static void draw_library(Ui *ui, const AppState *app) {
     draw_page_indicator(ui, page);
 }
 
+static void draw_cloud(Ui *ui, const AppState *app) {
+    label_text(ui, "发现 / 音乐云盘", 10, 34, UI_TEXT_LABEL, COL_CYAN);
+    label_text(ui, "B 返回",
+               388.0f - label_width(ui, "B 返回", UI_TEXT_LABEL), 34,
+               UI_TEXT_LABEL, COL_MUTED);
+    if (!app->logged_in) {
+        panel(20, 72, 360, 130, COL_PANEL, COL_GRID);
+        menu_text_fit(ui, i18n_text("登录后查看音乐云盘"),
+                      104, 105, UI_TEXT_TITLE, 220, COL_TEXT, 24);
+        menu_text_fit(ui, i18n_text("云盘文件将请求为 MP3 播放"),
+                      88, 134, UI_TEXT_LARGE, 244, COL_MUTED, 22);
+        label_text(ui, "A 登录", 168, 165, UI_TEXT_LABEL, COL_CYAN);
+        return;
+    }
+    if (app->mode == APP_LOADING_CLOUD) {
+        draw_discover_loading_panel(ui, "加载中");
+        return;
+    }
+    if (app->cloud_track_count == 0) {
+        panel(20, 76, 360, 120, COL_PANEL, COL_GRID);
+        if (app->mode == APP_ERROR)
+            smooth_text_fit(ui, app->status, 54, 119,
+                            UI_TEXT_BODY, 292, COL_RED, 42);
+        else
+            menu_text_fit(ui, i18n_text("音乐云盘中没有歌曲"),
+                          112, 119, UI_TEXT_TITLE, 190,
+                          COL_MUTED, 20);
+        label_text(ui, "A 重试", 168, 150, UI_TEXT_LABEL, COL_MUTED);
+        return;
+    }
+
+    const NeteaseCloudTrack *selected =
+        &app->cloud_tracks[app->cloud_track_selected];
+    char selected_format[NM3DS_CLOUD_FORMAT_CAPACITY];
+    snprintf(selected_format, sizeof(selected_format), "%s",
+             selected->format[0] ? selected->format : "?");
+    for (char *cursor = selected_format; *cursor; cursor++)
+        if (*cursor >= 'a' && *cursor <= 'z') *cursor -= 'a' - 'A';
+    char metadata[64];
+    if (selected->file_size)
+        i18n_snprintf(metadata, sizeof(metadata), "文件格式：%s · %.1f MB",
+                      selected_format,
+                      (double)selected->file_size /
+                          (double)NM3DS_CACHE_MIB);
+    else
+        i18n_snprintf(metadata, sizeof(metadata), "文件格式：%s",
+                      selected_format);
+    menu_text_fit(ui, metadata, 190, 35, UI_TEXT_BODY, 124,
+                  COL_MUTED, 20);
+
+    for (int row = 0; row < (int)app->cloud_track_count; row++) {
+        float y = (float)(UI_LIBRARY_TRACK_FIRST_ROW_Y +
+                          row * UI_LIBRARY_TRACK_ROW_STEP);
+        const NeteaseCloudTrack *track = &app->cloud_tracks[row];
+        bool row_selected = app->focus == APP_FOCUS_CONTENT &&
+                            row == app->cloud_track_selected;
+        if (row_selected) {
+            C2D_DrawRectSolid(12, y - 2, 0.2f, 376, 20, COL_PANEL_2);
+            C2D_DrawRectSolid(12, y - 2, 0.3f, 3, 20, COL_ORANGE);
+        }
+        unsigned int display = (unsigned int)(
+            app->cloud_track_offset + (size_t)row + 1U) % 1000U;
+        char number[4];
+        snprintf(number, sizeof(number), "%02u", display);
+        pixel_text(number, 20, y + 3, 0.5f, 1,
+                   row_selected ? COL_ORANGE : COL_DIM);
+        draw_song_title(ui, &track->song, 45, y,
+                        UI_TEXT_LARGE, 195,
+                        row_selected ? COL_TEXT : COL_MUTED, 30);
+        smooth_text_fit(ui, track->song.artist, 248, y,
+                        UI_TEXT_SMALL, 94,
+                        row_selected ? COL_CYAN : COL_MUTED, 18);
+        char format[8];
+        snprintf(format, sizeof(format), "%.7s",
+                 track->format[0] ? track->format : "?");
+        for (char *cursor = format; *cursor; cursor++)
+            if (*cursor >= 'a' && *cursor <= 'z') *cursor -= 'a' - 'A';
+        pixel_text(format, 390.0f - (float)strlen(format) * 6.0f,
+                   y + 5, 0.5f, 1,
+                   row_selected ?
+                       (strcmp(format, "MP3") == 0 ? COL_CYAN : COL_ORANGE) :
+                       COL_MUTED);
+    }
+    draw_content_list_scrollbar(
+        app, UI_LIBRARY_TRACK_SCROLLBAR_Y,
+        UI_LIBRARY_TRACK_SCROLLBAR_HEIGHT,
+        0, UI_LIBRARY_TRACK_VISIBLE_ROWS, app->cloud_track_count);
+    char page[32];
+    i18n_snprintf(page, sizeof(page), "%s 第 %u 页 %s",
+                  app->cloud_track_offset ? "<" : "-",
+                  (unsigned int)(app->cloud_track_offset /
+                                 NM3DS_CLOUD_PAGE + 1),
+                  app->cloud_track_has_more ? ">" : "-");
+    draw_page_indicator(ui, page);
+}
+
 static void draw_discover_home_card(Ui *ui, const AppState *app,
                                     int index, float x, float y,
                                     const char *title, const char *subtitle,
                                     u32 accent) {
     bool selected = app->focus == APP_FOCUS_CONTENT &&
                     app->discover_home_selected == index;
-    panel(x, y, 185, 76, selected ? COL_PANEL_2 : COL_PANEL,
+    panel(x, y, 185, 49, selected ? COL_PANEL_2 : COL_PANEL,
           selected ? accent : COL_GRID);
-    C2D_DrawRectSolid(x + 7, y + 8, 0.4f, 4, 60,
+    C2D_DrawRectSolid(x + 7, y + 7, 0.4f, 4, 35,
                       selected ? accent : COL_DIM);
-    label_text(ui, title, x + 20, y + 10, UI_TEXT_LABEL,
+    label_text(ui, title, x + 20, y + 4, UI_TEXT_LABEL,
                selected ? COL_TEXT : accent);
     if (index == DISCOVER_ITEM_ACCOUNT && app->logged_in &&
         app->nickname[0])
-        smooth_text_fit(ui, subtitle, x + 20, y + 36,
-                        UI_TEXT_LARGE, 150,
-                        selected ? COL_TEXT : COL_MUTED, 18);
+        smooth_text_fit(ui, subtitle, x + 20, y + 25,
+                        UI_TEXT_SMALL, 150,
+                        selected ? COL_TEXT : COL_MUTED, 16);
     else
-        menu_text_fit(ui, i18n_text(subtitle), x + 20, y + 36,
-                      UI_TEXT_LARGE, 150,
-                      selected ? COL_TEXT : COL_MUTED, 18);
+        menu_text_fit(ui, i18n_text(subtitle), x + 20, y + 25,
+                      UI_TEXT_SMALL, 150,
+                      selected ? COL_TEXT : COL_MUTED, 16);
 }
 
 static void draw_recommendation_source_card(
@@ -1713,19 +1809,21 @@ static void draw_discover_home(Ui *ui, const AppState *app) {
     draw_discover_home_card(ui, app, DISCOVER_ITEM_LIBRARY,
                             205, 55, "我的歌单", "创建和收藏的歌单",
                             COL_CYAN);
+    draw_discover_home_card(ui, app, DISCOVER_ITEM_CLOUD,
+                            10, 110, "音乐云盘", "我的云盘歌曲",
+                            COL_ORANGE);
     draw_discover_home_card(ui, app, DISCOVER_ITEM_SEARCH,
-                            10, 139, "搜索", "歌曲、歌手或专辑",
+                            205, 110, "搜索", "歌曲、歌手或专辑",
                             COL_CYAN);
     if (app->logged_in) {
         draw_discover_home_card(ui, app, DISCOVER_ITEM_ACCOUNT,
-                                205, 139, "账户",
+                                10, 165, "账户",
                                 app->nickname[0] ? app->nickname :
                                                    "正在验证登录…",
                                 COL_ORANGE);
-        label_text(ui, "已登录", 225, 193, UI_TEXT_LABEL, COL_CYAN);
     } else {
         draw_discover_home_card(ui, app, DISCOVER_ITEM_ACCOUNT,
-                                205, 139, "账户", "未登录 · A 扫码登录",
+                                10, 165, "账户", "未登录 · A 扫码登录",
                                 COL_ORANGE);
     }
 }
@@ -1761,6 +1859,7 @@ static void draw_discover(Ui *ui, const AppState *app) {
     else if (app->discover_section == DISCOVER_RECOMMENDATION_SOURCES)
         draw_recommendation_sources(ui, app);
     else if (app->discover_section == DISCOVER_LIBRARY) draw_library(ui, app);
+    else if (app->discover_section == DISCOVER_CLOUD) draw_cloud(ui, app);
     else if (app->discover_section == DISCOVER_SEARCH) draw_search(ui, app);
     else draw_discover_recommendations(ui, app);
 }
@@ -2697,6 +2796,29 @@ static void draw_page_controls(Ui *ui, const AppState *app,
                           true);
         add_control_hint(&hints, "SELECT", "列表", accent,
                           queue_has_selectable_item(app));
+        add_control_hint(&hints, "L/R", "切页", accent, true);
+        draw_control_hints(ui, title, accent, &hints);
+        return;
+    }
+
+    if (app->tab == TAB_DISCOVER &&
+        app->discover_section == DISCOVER_CLOUD) {
+        title = "音乐云盘控制";
+        accent = COL_CYAN;
+        bool has_items = app->logged_in && app->cloud_track_count > 0;
+        add_control_hint(&hints, "A",
+                         app->logged_in ?
+                             (has_items ? "播放" : "重试") : "登录",
+                         accent, true);
+        add_control_hint(&hints, "UD", "选择", accent, has_items);
+        add_control_hint(&hints, "Y", "刷新", accent,
+                         app->logged_in && !busy);
+        add_control_hint(&hints, "<>", "翻页", accent,
+                         app->logged_in && !busy);
+        add_control_hint(&hints, "B", busy ? "取消" : "返回",
+                         accent, true);
+        add_control_hint(&hints, "SELECT", "列表", accent,
+                         queue_has_selectable_item(app));
         add_control_hint(&hints, "L/R", "切页", accent, true);
         draw_control_hints(ui, title, accent, &hints);
         return;

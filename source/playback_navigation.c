@@ -8,6 +8,7 @@ bool playback_selection_stays_on_page(const AppState *app) {
     if (app->tab != TAB_DISCOVER) return false;
     if (app->discover_section == DISCOVER_RECOMMENDATIONS) return true;
     if (app->discover_section == DISCOVER_SEARCH) return true;
+    if (app->discover_section == DISCOVER_CLOUD) return true;
     return app->discover_section == DISCOVER_LIBRARY &&
            app->library_view == LIBRARY_TRACKS;
 }

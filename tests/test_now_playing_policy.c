@@ -10,12 +10,20 @@ int main(void) {
 
     assert(now_playing_display_index(2, -1, 1) == 1);
     assert(now_playing_display_is_pending(2, -1, 1));
+    assert(now_playing_extras_should_apply(2, -1, 1, 1));
 
     assert(now_playing_display_index(2, 3, 1) == 1);
     assert(now_playing_display_is_pending(2, 3, 1));
+    assert(now_playing_extras_should_apply(2, 3, 1, 1));
 
     assert(now_playing_display_index(2, -1, 3) == -1);
     assert(!now_playing_display_is_pending(2, -1, 3));
+    assert(!now_playing_extras_should_apply(2, -1, 3, 1));
+
+    assert(now_playing_extras_should_apply(2, 0, 1, 0));
+    assert(!now_playing_extras_should_apply(2, 0, 1, 1));
+    assert(!now_playing_extras_should_apply(2, 0, 1, -1));
+    assert(!now_playing_extras_should_apply(2, 0, 1, 2));
 
     AppState app = {0};
     app.queue_count = 2;

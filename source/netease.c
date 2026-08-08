@@ -1,5 +1,6 @@
 #include "netease.h"
 
+#include "cloud_data.h"
 #include "eapi.h"
 #include "i18n.h"
 #include "json.h"
@@ -961,6 +962,35 @@ int netease_user_playlists(NeteaseClient *client, size_t offset,
     return 0;
 }
 
+int netease_user_cloud(NeteaseClient *client, size_t offset,
+                       NeteaseCloudTrack *tracks, size_t capacity,
+                       size_t *count, bool *has_more,
+                       char *error, size_t error_size) {
+    if (!client || !netease_logged_in(client) || client->user_id <= 0 ||
+        !tracks || capacity == 0 || capacity == SIZE_MAX ||
+        !count || !has_more) {
+        set_error(error, error_size, "登录后才能查看音乐云盘");
+        return -1;
+    }
+    char payload[192];
+    int length = snprintf(payload, sizeof(payload),
+        "{\"limit\":%zu,\"offset\":%zu,\"csrf_token\":\"\"}",
+        capacity + 1U, offset);
+    if (length < 0 || (size_t)length >= sizeof(payload)) {
+        set_error(error, error_size, "云盘请求过大");
+        return -1;
+    }
+    char *json = NULL;
+    if (weapi_request(client, "v1/cloud/get", payload,
+                      &json, error, error_size) != 0)
+        return -1;
+    int result = cloud_parse_response(
+        json, client->user_id, tracks, capacity,
+        count, has_more, error, error_size);
+    free(json);
+    return result;
+}
+
 int netease_playlist_tracks(NeteaseClient *client, int64_t playlist_id,
                             size_t offset, bool refresh_index,
                             Song *songs, size_t capacity,
@@ -1456,11 +1486,31 @@ int netease_song_url(NeteaseClient *client, int64_t song_id,
         free(json);
         return -1;
     }
-    if (playback) {
-        int trial = json_obj_get(&doc, item, "freeTrialInfo");
-        playback->is_trial = trial >= 0 && !json_is_null(&doc, trial) &&
-                             !json_token_equals(&doc, trial, "null");
+    NeteasePlaybackInfo parsed_playback;
+    memset(&parsed_playback, 0, sizeof(parsed_playback));
+    int trial = json_obj_get(&doc, item, "freeTrialInfo");
+    parsed_playback.is_trial =
+        trial >= 0 && !json_is_null(&doc, trial) &&
+        !json_token_equals(&doc, trial, "null");
+    int format = json_obj_get(&doc, item, "type");
+    if (format < 0) format = json_obj_get(&doc, item, "encodeType");
+    if (format >= 0 && !json_is_null(&doc, format))
+        (void)json_string(&doc, format, parsed_playback.format,
+                          sizeof(parsed_playback.format));
+    for (char *cursor = parsed_playback.format; *cursor; cursor++)
+        *cursor = (char)tolower((unsigned char)*cursor);
+    if (parsed_playback.format[0] &&
+        strcmp(parsed_playback.format, "mp3") != 0 &&
+        strcmp(parsed_playback.format, "mpeg") != 0) {
+        set_error(error, error_size,
+                  "服务端返回 %s，本机仅支持 MP3",
+                  parsed_playback.format);
+        url[0] = '\0';
+        free(tokens);
+        free(json);
+        return -1;
     }
+    if (playback) *playback = parsed_playback;
     free(tokens);
     free(json);
     return 0;

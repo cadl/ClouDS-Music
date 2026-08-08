@@ -30,6 +30,10 @@ int main(void) {
     assert(playback_selection_stays_on_page(&app));
     assert(playback_back_should_preserve_extras(&app));
 
+    app.discover_section = DISCOVER_CLOUD;
+    assert(playback_selection_stays_on_page(&app));
+    assert(playback_back_should_preserve_extras(&app));
+
     app.discover_section = DISCOVER_HOME;
     assert(!playback_selection_stays_on_page(&app));
     app.tab = TAB_SETTINGS;

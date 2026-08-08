@@ -8,8 +8,16 @@
 #include <string.h>
 
 #define AUTH_VERSION_LEGACY 1U
-#define AUTH_VERSION_CURRENT 2U
+#define AUTH_VERSION_WITH_LARGE_TOKEN 2U
+#define AUTH_VERSION_CURRENT 3U
 #define LEGACY_MUSIC_U_CAPACITY 512U
+#define AUTH_V3_USER_ID_OFFSET 8U
+#define AUTH_V3_DEVICE_ID_OFFSET 16U
+#define AUTH_V3_MUSIC_U_OFFSET \
+    (AUTH_V3_DEVICE_ID_OFFSET + NETEASE_DEVICE_ID_CAPACITY)
+#define AUTH_V3_NICKNAME_OFFSET \
+    (AUTH_V3_MUSIC_U_OFFSET + NETEASE_MUSIC_U_CAPACITY)
+#define AUTH_V3_SIZE (AUTH_V3_NICKNAME_OFFSET + 96U)
 
 typedef struct {
     char magic[4];
@@ -29,6 +37,18 @@ typedef struct {
     char device_id[NETEASE_DEVICE_ID_CAPACITY];
     char music_u[NETEASE_MUSIC_U_CAPACITY];
 } AuthFileV2;
+
+static void put_u64_le(uint8_t output[8], uint64_t value) {
+    for (unsigned int i = 0; i < 8; i++)
+        output[i] = (uint8_t)(value >> (i * 8U));
+}
+
+static uint64_t get_u64_le(const uint8_t input[8]) {
+    uint64_t value = 0;
+    for (unsigned int i = 0; i < 8; i++)
+        value |= (uint64_t)input[i] << (i * 8U);
+    return value;
+}
 
 static void set_error(char *error, size_t size, const char *format, ...) {
     if (!error || size == 0) return;
@@ -66,13 +86,35 @@ int auth_load(NeteaseClient *client, const char *path,
             auth.version == AUTH_VERSION_LEGACY)
             result = apply_auth(client, auth.device_id, sizeof(auth.device_id),
                                 auth.music_u, sizeof(auth.music_u));
-    } else if (header_ok && header.version == AUTH_VERSION_CURRENT) {
+    } else if (header_ok &&
+               header.version == AUTH_VERSION_WITH_LARGE_TOKEN) {
         AuthFileV2 auth;
         if (fread(&auth, 1, sizeof(auth), file) == sizeof(auth) &&
             memcmp(auth.magic, "AUTH", 4) == 0 &&
-            auth.version == AUTH_VERSION_CURRENT)
+            auth.version == AUTH_VERSION_WITH_LARGE_TOKEN)
             result = apply_auth(client, auth.device_id, sizeof(auth.device_id),
                                 auth.music_u, sizeof(auth.music_u));
+    } else if (header_ok && header.version == AUTH_VERSION_CURRENT) {
+        uint8_t auth[AUTH_V3_SIZE];
+        if (fread(auth, 1, sizeof(auth), file) == sizeof(auth) &&
+            memcmp(auth, "AUTH", 4) == 0 &&
+            memchr(auth + AUTH_V3_NICKNAME_OFFSET, '\0', 96U)) {
+            result = apply_auth(
+                client,
+                (const char *)auth + AUTH_V3_DEVICE_ID_OFFSET,
+                NETEASE_DEVICE_ID_CAPACITY,
+                (const char *)auth + AUTH_V3_MUSIC_U_OFFSET,
+                NETEASE_MUSIC_U_CAPACITY);
+            int64_t user_id = (int64_t)get_u64_le(
+                auth + AUTH_V3_USER_ID_OFFSET);
+            if (result == 0 && user_id >= 0) {
+                client->user_id = user_id;
+                snprintf(client->nickname, sizeof(client->nickname), "%s",
+                         (const char *)auth + AUTH_V3_NICKNAME_OFFSET);
+            } else if (result == 0) {
+                result = -1;
+            }
+        }
     }
     if (fclose(file) != 0) result = -1;
     if (result != 0)
@@ -87,18 +129,24 @@ int auth_save(const NeteaseClient *client, const char *path,
     char temporary[320];
     int written = snprintf(temporary, sizeof(temporary), "%s.part", path);
     if (written < 0 || (size_t)written >= sizeof(temporary)) return -1;
-    AuthFileV2 auth;
-    memset(&auth, 0, sizeof(auth));
-    memcpy(auth.magic, "AUTH", 4);
-    auth.version = AUTH_VERSION_CURRENT;
-    snprintf(auth.device_id, sizeof(auth.device_id), "%s", client->device_id);
-    snprintf(auth.music_u, sizeof(auth.music_u), "%s", client->music_u);
+    uint8_t auth[AUTH_V3_SIZE];
+    memset(auth, 0, sizeof(auth));
+    memcpy(auth, "AUTH", 4);
+    uint32_t version = AUTH_VERSION_CURRENT;
+    memcpy(auth + 4, &version, sizeof(version));
+    put_u64_le(auth + AUTH_V3_USER_ID_OFFSET, (uint64_t)client->user_id);
+    snprintf((char *)auth + AUTH_V3_DEVICE_ID_OFFSET,
+             NETEASE_DEVICE_ID_CAPACITY, "%s", client->device_id);
+    snprintf((char *)auth + AUTH_V3_MUSIC_U_OFFSET,
+             NETEASE_MUSIC_U_CAPACITY, "%s", client->music_u);
+    snprintf((char *)auth + AUTH_V3_NICKNAME_OFFSET, 96U, "%s",
+             client->nickname);
     FILE *file = fopen(temporary, "wb");
     if (!file) {
         set_error(error, error_size, "无法保存登录信息");
         return -1;
     }
-    bool wrote = fwrite(&auth, 1, sizeof(auth), file) == sizeof(auth);
+    bool wrote = fwrite(auth, 1, sizeof(auth), file) == sizeof(auth);
     int close_result = fclose(file);
     if (!wrote || close_result != 0) {
         remove(temporary);

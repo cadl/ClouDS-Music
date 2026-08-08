@@ -125,6 +125,11 @@ host-test:
 		source/json.c tests/test_json.c -o tests/test_json
 	@tests/test_json
 	@cc -std=c11 -Wall -Wextra -Werror -Iinclude \
+		source/cloud_data.c source/json.c source/song_text.c \
+		source/unicode_text.c source/i18n.c tests/test_cloud_data.c \
+		-o tests/test_cloud_data
+	@tests/test_cloud_data
+	@cc -std=c11 -Wall -Wextra -Werror -Iinclude \
 		source/playlist_index.c source/i18n.c tests/test_playlist_index.c \
 		-o tests/test_playlist_index
 	@tests/test_playlist_index
@@ -335,7 +340,8 @@ clean:
 		$(OLD3DS_STRESS_TARGET).3dsx $(OLD3DS_STRESS_TARGET).elf \
 		$(OLD3DS_STRESS_TARGET).smdh \
 		$(CIA_OUTPUT) $(CIA_BANNER) \
-		tests/test_json tests/test_ime tests/test_storage tests/test_qrcode
+		tests/test_json tests/test_cloud_data tests/test_ime tests/test_storage \
+		tests/test_qrcode
 	@rm -f tests/test_auth tests/test_navigation tests/test_lyric_animation \
 		tests/test_ime_candidate_layout \
 		tests/test_immersive_font_data \

@@ -15,7 +15,8 @@
 
 #define JOURNAL_HEADER_SIZE 16U
 #define JOURNAL_MAX_PAYLOAD 704U
-#define STORED_SONG_SIZE 649U
+#define STORED_SONG_LEGACY_SIZE 649U
+#define STORED_SONG_SIZE 657U
 
 #define PATCH_COVER_URL (1U << 0)
 #define PATCH_FEE (1U << 1)
@@ -45,6 +46,18 @@ typedef struct {
     char album[96];
     char pic_url[320];
 } StoredSongV1;
+
+/* Version 2 snapshots wrote the then-current Song struct directly. Keep an
+   exact legacy shape so adding private-cloud ownership does not invalidate
+   existing queues. */
+typedef struct {
+    int64_t id;
+    char title[128];
+    char artist[96];
+    char album[96];
+    char pic_url[320];
+    uint8_t fee;
+} StoredSongV2;
 
 static void set_error(char *error, size_t size, const char *format, ...) {
     if (!error || size == 0) return;
@@ -99,9 +112,13 @@ static void encode_song(uint8_t output[STORED_SONG_SIZE], const Song *song) {
     snprintf((char *)output + 232, sizeof(song->album), "%s", song->album);
     snprintf((char *)output + 328, sizeof(song->pic_url), "%s", song->pic_url);
     output[648] = song->fee;
+    put_u64(output + 649, (uint64_t)song->cloud_owner_user_id);
 }
 
-static int decode_song(const uint8_t input[STORED_SONG_SIZE], Song *song) {
+static int decode_song(const uint8_t *input, size_t input_size, Song *song) {
+    if (!input || (input_size != STORED_SONG_LEGACY_SIZE &&
+                   input_size != STORED_SONG_SIZE))
+        return -1;
     memset(song, 0, sizeof(*song));
     song->id = (int64_t)get_u64(input);
     memcpy(song->title, input + 8, sizeof(song->title));
@@ -113,7 +130,11 @@ static int decode_song(const uint8_t input[STORED_SONG_SIZE], Song *song) {
     song->album[sizeof(song->album) - 1] = '\0';
     song->pic_url[sizeof(song->pic_url) - 1] = '\0';
     song->fee = input[648];
-    if (song->id <= 0 || !song_fee_valid(song->fee)) return -1;
+    if (input_size == STORED_SONG_SIZE)
+        song->cloud_owner_user_id = (int64_t)get_u64(input + 649);
+    if (song->id <= 0 || !song_fee_valid(song->fee) ||
+        song->cloud_owner_user_id < 0)
+        return -1;
     song_text_compose_hangul_nfc(song);
     return 0;
 }
@@ -172,7 +193,8 @@ int playlist_load(AppState *app, const char *path,
     PlaylistHeader header;
     if (fread(&header, 1, sizeof(header), file) != sizeof(header) ||
         memcmp(header.magic, "PLST", 4) != 0 ||
-        (header.version != 1 && header.version != 2) ||
+        (header.version != 1 && header.version != 2 &&
+         header.version != 3) ||
         header.count > NM3DS_MAX_QUEUE) {
         fclose(file);
         set_error(error, error_size, "保存的播放列表无效");
@@ -195,11 +217,33 @@ int playlist_load(AppState *app, const char *path,
             memcpy(song->pic_url, stored.pic_url, sizeof(song->pic_url));
             song->fee = SONG_FEE_UNKNOWN;
         }
-    } else if (fread(app->queue, sizeof(app->queue[0]), header.count, file) !=
-               header.count) {
-        fclose(file);
-        set_error(error, error_size, "保存的播放列表无效");
-        return -1;
+    } else if (header.version == 2) {
+        for (uint32_t i = 0; i < header.count; i++) {
+            StoredSongV2 stored;
+            if (fread(&stored, 1, sizeof(stored), file) != sizeof(stored)) {
+                fclose(file);
+                set_error(error, error_size, "保存的播放列表无效");
+                return -1;
+            }
+            Song *song = &app->queue[i];
+            memset(song, 0, sizeof(*song));
+            song->id = stored.id;
+            memcpy(song->title, stored.title, sizeof(song->title));
+            memcpy(song->artist, stored.artist, sizeof(song->artist));
+            memcpy(song->album, stored.album, sizeof(song->album));
+            memcpy(song->pic_url, stored.pic_url, sizeof(song->pic_url));
+            song->fee = stored.fee;
+        }
+    } else {
+        uint8_t stored[STORED_SONG_SIZE];
+        for (uint32_t i = 0; i < header.count; i++) {
+            if (fread(stored, 1, sizeof(stored), file) != sizeof(stored) ||
+                decode_song(stored, sizeof(stored), &app->queue[i]) != 0) {
+                fclose(file);
+                set_error(error, error_size, "保存的播放列表无效");
+                return -1;
+            }
+        }
     }
     bool eof = fgetc(file) == EOF && !ferror(file);
     fclose(file);
@@ -251,13 +295,16 @@ int playlist_save(const AppState *app, const char *path,
         return -1;
     }
     PlaylistHeader header = {
-        {'P', 'L', 'S', 'T'}, 2, (uint32_t)app->queue_count,
+        {'P', 'L', 'S', 'T'}, 3, (uint32_t)app->queue_count,
         app->queue_selected, (uint32_t)app->play_mode, app->volume
     };
-    bool wrote = fwrite(&header, 1, sizeof(header), file) == sizeof(header) &&
-                 fwrite(app->queue, sizeof(app->queue[0]), app->queue_count,
-                        file) == app->queue_count &&
-                 fflush(file) == 0;
+    bool wrote = fwrite(&header, 1, sizeof(header), file) == sizeof(header);
+    uint8_t stored[STORED_SONG_SIZE];
+    for (size_t i = 0; wrote && i < app->queue_count; i++) {
+        encode_song(stored, &app->queue[i]);
+        wrote = fwrite(stored, 1, sizeof(stored), file) == sizeof(stored);
+    }
+    wrote = wrote && fflush(file) == 0;
     int close_result = fclose(file);
     if (!wrote || close_result != 0) {
         remove(temporary);
@@ -328,11 +375,13 @@ static int append_record(PlaylistStore *store, JournalRecordType type,
 
 static int apply_add_record(AppState *app, const uint8_t *payload,
                             size_t payload_size) {
-    if (payload_size != 12U + STORED_SONG_SIZE) return -1;
+    if (payload_size != 12U + STORED_SONG_LEGACY_SIZE &&
+        payload_size != 12U + STORED_SONG_SIZE)
+        return -1;
     size_t position = get_u32(payload);
     int64_t evicted_id = (int64_t)get_u64(payload + 4);
     Song song;
-    if (decode_song(payload + 12, &song) != 0) return -1;
+    if (decode_song(payload + 12, payload_size - 12U, &song) != 0) return -1;
     int64_t selected_id = selected_song_id(app);
 
     int existing = song_index(app, song.id);

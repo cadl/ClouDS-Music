@@ -208,6 +208,22 @@ static void run_user_playlists(NetworkWorker *worker, const WorkerJob *job,
     result->success = true;
 }
 
+static void run_user_cloud(NetworkWorker *worker, const WorkerJob *job,
+                           WorkerResult *result) {
+    char error[192] = {0};
+    worker_status(worker, "云盘加载中 · 第 %u 页",
+                  (unsigned int)(job->offset / NM3DS_CLOUD_PAGE + 1));
+    result->offset = job->offset;
+    if (netease_user_cloud(worker->client, job->offset,
+                           result->cloud_tracks, NM3DS_CLOUD_PAGE,
+                           &result->cloud_track_count, &result->has_more,
+                           error, sizeof(error)) != 0) {
+        finish_failure(worker, result, error);
+        return;
+    }
+    result->success = true;
+}
+
 static void run_playlist_tracks(NetworkWorker *worker, const WorkerJob *job,
                                 WorkerResult *result) {
     char error[192] = {0};
@@ -417,6 +433,12 @@ static void run_prepare_song(NetworkWorker *worker, const WorkerJob *job,
     char error[192] = {0};
     result->song_id = job->song.id;
     result->offline_playback = job->offline_playback;
+    if (!song_cloud_access_allowed(
+            &job->song, netease_logged_in(worker->client),
+            worker->client->user_id)) {
+        finish_failure(worker, result, "请登录当前音乐云盘账户");
+        return;
+    }
     if (!job->force_download) {
         CacheAudioType audio_type = job->offline_playback ?
             cache_song_offline_audio_type(
@@ -577,6 +599,12 @@ static void run_prefetch_song(NetworkWorker *worker, const WorkerJob *job,
     char error[192] = {0};
     result->song_id = job->song.id;
     result->prefetch_anchor_song_id = job->protected_song;
+    if (!song_cloud_access_allowed(
+            &job->song, netease_logged_in(worker->client),
+            worker->client->user_id)) {
+        finish_failure(worker, result, "请登录当前音乐云盘账户");
+        return;
+    }
     CacheAudioType cached_audio = cache_song_online_audio_type(
         CACHE_ROOT, job->song.id, job->allow_full_cache);
     result->prefetch_was_cached =
@@ -808,6 +836,9 @@ static void run_job(NetworkWorker *worker, const WorkerJob *job,
             break;
         case WORKER_JOB_USER_PLAYLISTS:
             run_user_playlists(worker, job, result);
+            break;
+        case WORKER_JOB_USER_CLOUD:
+            run_user_cloud(worker, job, result);
             break;
         case WORKER_JOB_PLAYLIST_TRACKS:
             run_playlist_tracks(worker, job, result);

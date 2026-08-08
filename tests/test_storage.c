@@ -31,6 +31,15 @@ typedef struct {
 } LegacySong;
 
 typedef struct {
+    int64_t id;
+    char title[128];
+    char artist[96];
+    char album[96];
+    char pic_url[320];
+    uint8_t fee;
+} PlaylistSongV2Fixture;
+
+typedef struct {
     char magic[4];
     uint32_t version;
     uint64_t cache_limit;
@@ -224,6 +233,7 @@ int main(void) {
     snprintf(app.queue[2].album, sizeof(app.queue[2].album),
              "\xE1\x84\x8B\xE1\x85\xA2\xE1\x86\xAF범");
     app.queue[1].fee = SONG_FEE_VIP;
+    app.queue[2].cloud_owner_user_id = 7654321;
     app.queue_offline_playable[1] = true;
     app.queue_cache_known[1] = true;
     snprintf(app.queue[1].pic_url, sizeof(app.queue[1].pic_url),
@@ -249,6 +259,12 @@ int main(void) {
     assert(strcmp(loaded.queue[2].title, "한글") == 0);
     assert(strcmp(loaded.queue[2].artist, "가수") == 0);
     assert(strcmp(loaded.queue[2].album, "앨범") == 0);
+    assert(loaded.queue[2].cloud_owner_user_id == 7654321);
+    assert(!song_cloud_access_allowed(&loaded.queue[2], false, 0));
+    assert(!song_cloud_access_allowed(&loaded.queue[2], true, 1));
+    assert(song_cloud_access_allowed(&loaded.queue[2], true, 7654321));
+    assert(song_offline_full_allowed_for_user(
+        &loaded.queue[2], true, 7654321));
     assert(playlist_set_cover_url(&loaded, 100,
                                   "https://example.com/100.jpg"));
     assert(strcmp(loaded.queue[0].pic_url,
@@ -307,6 +323,33 @@ int main(void) {
     assert(strcmp(legacy_loaded.queue[0].title, "Legacy song") == 0);
     assert(legacy_loaded.queue[0].fee == SONG_FEE_UNKNOWN);
     assert(!song_offline_full_allowed(&legacy_loaded.queue[0], false));
+
+    legacy = fopen(playlist_path, "wb");
+    assert(legacy != NULL);
+    LegacyPlaylistHeader playlist_v2_header = {
+        {'P', 'L', 'S', 'T'}, 2, 1, 0, PLAY_MODE_REPEAT_ONE, 0.5f
+    };
+    PlaylistSongV2Fixture playlist_v2_song;
+    memset(&playlist_v2_song, 0, sizeof(playlist_v2_song));
+    playlist_v2_song.id = 264;
+    playlist_v2_song.fee = SONG_FEE_VIP;
+    snprintf(playlist_v2_song.title, sizeof(playlist_v2_song.title),
+             "Version 2 song");
+    assert(fwrite(&playlist_v2_header, 1, sizeof(playlist_v2_header),
+                  legacy) == sizeof(playlist_v2_header));
+    assert(fwrite(&playlist_v2_song, 1, sizeof(playlist_v2_song), legacy) ==
+           sizeof(playlist_v2_song));
+    assert(fclose(legacy) == 0);
+    AppState playlist_v2_loaded;
+    memset(&playlist_v2_loaded, 0, sizeof(playlist_v2_loaded));
+    assert(playlist_load(&playlist_v2_loaded, playlist_path,
+                         error, sizeof(error)) == 0);
+    assert(playlist_v2_loaded.queue_count == 1);
+    assert(playlist_v2_loaded.queue[0].id == 264);
+    assert(strcmp(playlist_v2_loaded.queue[0].title, "Version 2 song") == 0);
+    assert(song_is_vip(&playlist_v2_loaded.queue[0]));
+    assert(playlist_v2_loaded.queue[0].cloud_owner_user_id == 0);
+    assert(playlist_v2_loaded.play_mode == PLAY_MODE_REPEAT_ONE);
     remove(playlist_path);
 
     const char *journal_path = "/tmp/nm3ds-playlist-test.log";
@@ -520,7 +563,7 @@ int main(void) {
     assert(stat(playlist_path, &journal_stat) == 0);
     assert((size_t)journal_stat.st_size ==
            sizeof(LegacyPlaylistHeader) +
-           NM3DS_MAX_QUEUE * sizeof(Song));
+           NM3DS_MAX_QUEUE * 657U);
 
     memset(journal_loaded, 0, sizeof(*journal_loaded));
     journal_loaded->queue_selected = -1;

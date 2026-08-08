@@ -16,3 +16,11 @@ bool now_playing_display_is_pending(size_t queue_count, int current_index,
     return !valid_index(queue_count, current_index) &&
            valid_index(queue_count, pending_index);
 }
+
+bool now_playing_extras_should_apply(size_t queue_count, int current_index,
+                                     int pending_index, int result_index) {
+    if (!valid_index(queue_count, result_index)) return false;
+    if (result_index == current_index) return true;
+    return result_index == pending_index &&
+           !valid_index(queue_count, current_index);
+}
