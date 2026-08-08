@@ -19,14 +19,18 @@
   `romfs/content-point-font.bin` is the corresponding 12px visible-glyph
   subset used by 18px semantic UI content, and
   `romfs/content-large-point-font.bin` is the 15px strike used by 21/24px
-  semantic titles. All three contain the same Chinese, Latin and
-  3,500-syllable Hangul repertoire. Han and Hangul bitmaps receive a bounded
+  semantic titles. All three contain the same Chinese, Japanese, Latin and
+  3,500-syllable Hangul repertoire. Japanese coverage selects the glyphs
+  available from the strict Shift_JIS JIS X 0208/0201 mapping, adds supported
+  BMP kana and punctuation, and includes a curated set of common name variants
+  found in music metadata. Han and Hangul bitmaps receive a bounded
   one-pixel visual-center correction during offline conversion; Latin and
   punctuation retain Noto's baseline placement. The complete license is
   stored in `third_party/Noto-Sans-CJK-OFL-1.1.txt`; pinned downloads,
   checksums, whitelist selection and deterministic conversion are reproduced
   by `tools/fetch-content-font.sh`, `tools/gen_ui_font_whitelist.py`,
-  `tools/normalize_bcfnt.py` and `tools/gen_immersive_font.py`.
+  `tools/normalize_bcfnt.py`, `tools/gen_content_font_whitelist.py` and
+  `tools/gen_immersive_font.py`.
 - Common Traditional Chinese font coverage is derived from the Simplified to
   Traditional character and Taiwan/Hong Kong variant mappings in pinned
   [OpenCC](https://github.com/BYVoid/OpenCC/tree/81223ed87ae53283ef518e2deac34b7971f8a39e),

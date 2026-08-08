@@ -55,6 +55,10 @@ test rather than a substitute for Old 3DS timing and hardware behavior.
    renderer and an unsupported dynamic glyph becomes a stable square. Confirm
    cyan, gray, orange, red and white text match across both renderers. Record
    cold-start time plus `linear_free` before and after the menu BCFNT change.
+   On both Japanese- and non-Japanese-region systems, also verify
+   `スーパー / 働く / 辻 / 髙橋 / 﨑山 / 𠮷岡 / ｱｲﾄﾞﾙ` in song rows, the
+   queue, search input and normal lyrics. No character may depend on the system
+   font or turn into a replacement square.
 8. Fill the four-row bottom playlist with long Chinese song and artist names.
    Confirm both 18px lines remain readable and truncate inside the panel. Also
    inspect every page's 18px BCFNT control actions, page heading, back hint and
@@ -186,6 +190,10 @@ probe failures are logged only once until connectivity succeeds again.
    stable square rather than corrupting adjacent UTF-8 text. Record
    `linear_free` before and after the first Korean lyric appears; it should not
    allocate a second font file or cause an audio underrun or visible input stall.
+   Play a Japanese track containing full-width and half-width kana, `ー`, `〜`,
+   `髙`, `﨑` and `𠮷`; confirm the same embedded point glyphs appear in normal
+   and immersive lyrics. Record `app_free` and `linear_free` before playback
+   and after entering immersive mode on an Old 3DS/2DS profile.
 5. On a 3D-capable system, start with the 3D slider at zero, then raise it
    slowly. Confirm the active lyric is the nearest tier; the rows immediately
    above and below share the next tier, followed by another symmetric pair and

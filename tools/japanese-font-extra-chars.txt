@@ -1,0 +1,11 @@
+# Common Japanese personal-name and surname variants seen in music metadata.
+# The standard JIS X 0208/0201 repertoire is generated in
+# gen_content_font_whitelist.py; keep this list small and evidence-driven.
+
+髙 﨑 𠮷 㐂 濵 彅 栁 桒 圡 塡 尙
+
+# Compatibility forms still emitted by Japanese catalog and account data.
+朗 塚 晴 神 祥 福 靖 精 羽 諸 都 逸 飯 飼 館 鶴 猪 益 礼
+
+# Common old/new-form pairs retained explicitly as regression fixtures.
+德 瀨 邊 邉 櫻 榮 惠 黑 凜 槇 遙
