@@ -26,8 +26,8 @@ ICON        := icon-v4.png
 APP_TITLE       := ClouDS Music
 APP_DESCRIPTION := streaming music client for Nintendo 3DS
 APP_AUTHOR      := cadl
-APP_VERSION     := 1.1.0
-APP_RELEASE_DATE := 2026-07-25
+APP_VERSION     := 1.2.0
+APP_RELEASE_DATE := 2026-08-09
 APP_VERSION_PARTS := $(subst ., ,$(APP_VERSION))
 
 CIA_TARGET       := $(TARGET)
