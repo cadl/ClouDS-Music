@@ -1,14 +1,32 @@
 #!/usr/bin/env python3
-"""Generate the Chinese/Latin whitelist used by the 3DS point fonts."""
+"""Generate the Chinese/Japanese/Latin whitelist for the 3DS point fonts."""
 
 import argparse
 from pathlib import Path
 import struct
 
-from fontTools.ttLib import TTFont
-
 
 DICTIONARY_HEADER = struct.Struct("<4sIIIIII")
+SHIFT_JIS_CODEPOINTS = 6944
+
+# Shift_JIS supplies JIS X 0208 and the half-width JIS X 0201 kana used by
+# older metadata.  Complete the modern BMP kana and punctuation blocks so
+# Unicode-native titles do not depend on whether a character has a legacy
+# code-page mapping.  Combining dakuten/handakuten remain excluded because
+# the point renderer currently has no zero-advance mark positioning; NFC text
+# uses the precomposed kana already covered here.
+JAPANESE_UNICODE_RANGES = (
+    (0x3000, 0x303F),  # CJK symbols and punctuation
+    (0x3040, 0x30FF),  # Hiragana and Katakana
+    (0x31F0, 0x31FF),  # Katakana phonetic extensions
+    (0xFF61, 0xFF9F),  # Half-width punctuation and Katakana
+)
+JAPANESE_COMBINING_MARKS = {0x3099, 0x309A}
+JAPANESE_MUSIC_SYMBOLS = {
+    0x266A, 0x266B, 0x266C,  # eighth notes
+    0x266D, 0x266E, 0x266F,  # flat, natural and sharp
+    0x301C, 0xFF5E,          # both common wave-dash encodings
+}
 
 
 def extra_codepoints(path: Path | None) -> set[int]:
@@ -79,8 +97,34 @@ def gb2312_codepoints() -> set[int]:
     return result
 
 
+def shift_jis_codepoints() -> set[int]:
+    result = set()
+    for codepoint in range(0x80, 0x10000):
+        try:
+            chr(codepoint).encode("shift_jis")
+        except UnicodeEncodeError:
+            continue
+        result.add(codepoint)
+    if len(result) != SHIFT_JIS_CODEPOINTS:
+        raise RuntimeError(
+            "Python's strict Shift_JIS mapping changed: "
+            f"expected {SHIFT_JIS_CODEPOINTS}, found {len(result)}"
+        )
+    return result
+
+
+def japanese_codepoints() -> set[int]:
+    result = shift_jis_codepoints()
+    for first, last in JAPANESE_UNICODE_RANGES:
+        result.update(range(first, last + 1))
+    result.update(JAPANESE_MUSIC_SYMBOLS)
+    result.difference_update(JAPANESE_COMBINING_MARKS)
+    return result
+
+
 def requested_codepoints(dictionary: Path, source: Path) -> set[int]:
-    result = candidate_codepoints(dictionary) | gb2312_codepoints()
+    result = (candidate_codepoints(dictionary) | gb2312_codepoints() |
+              japanese_codepoints())
     result.update(range(0x20, 0x7F))
     result.update(range(0xA0, 0x180))
     result.update(range(0x2000, 0x2070))
@@ -93,16 +137,17 @@ def requested_codepoints(dictionary: Path, source: Path) -> set[int]:
 
 
 def generate(font_path: Path, dictionary: Path,
-             source: Path, output: Path, extra_path: Path | None,
+             source: Path, output: Path, extra_paths: list[Path],
              traditional_maps: list[Path]) -> None:
+    from fontTools.ttLib import TTFont
+
     with TTFont(font_path, lazy=True) as font:
-        cmap_codepoints = {
-            codepoint for codepoint in font.getBestCmap()
-            if codepoint <= 0xFFFF
-        }
+        cmap_codepoints = set(font.getBestCmap())
     candidates = candidate_codepoints(dictionary)
     base = requested_codepoints(dictionary, source)
-    extras = extra_codepoints(extra_path)
+    extras = set()
+    for extra_path in extra_paths:
+        extras |= extra_codepoints(extra_path)
     requested = base | extras
     traditional = set()
     for traditional_map in traditional_maps:
@@ -133,17 +178,19 @@ def generate(font_path: Path, dictionary: Path,
     )
     if missing_candidates:
         values = ", ".join(f"U+{value:04X}" for value in missing_candidates)
-        print(f"system-font fallback required for: {values}")
+        print(f"point-font replacement required for: {values}")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Generate the Chinese/Latin 3DS point-font whitelist."
+        description=(
+            "Generate the Chinese/Japanese/Latin 3DS point-font whitelist."
+        )
     )
     parser.add_argument("--font", type=Path, required=True)
     parser.add_argument("--dictionary", type=Path, required=True)
     parser.add_argument("--source", type=Path, required=True)
-    parser.add_argument("--extra", type=Path)
+    parser.add_argument("--extra", type=Path, action="append", default=[])
     parser.add_argument("--traditional-map", type=Path, action="append",
                         default=[])
     parser.add_argument("--output", type=Path, required=True)

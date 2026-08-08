@@ -113,6 +113,7 @@ $(BUILD):
 
 host-test:
 	@python3 tests/test_ui_font_whitelist.py
+	@python3 tests/test_content_font_whitelist.py
 	@python3 tests/test_bcfnt_normalize.py
 	@cc -std=c11 -Wall -Wextra -Werror -Iinclude \
 		source/i18n.c tests/test_i18n.c -o tests/test_i18n

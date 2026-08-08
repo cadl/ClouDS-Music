@@ -9,7 +9,7 @@
 #define TEST_GLYPH_HEIGHT 32U
 #define TEST_BITMAP_BYTES 96U
 #define TEST_ENTRY_BYTES 104U
-#define COMMITTED_GLYPH_COUNT 13743U
+#define COMMITTED_GLYPH_COUNT 15221U
 #define COMMITTED_HANGUL_SYLLABLES 3500U
 
 static void write_u16(uint8_t *output, uint16_t value) {
@@ -70,6 +70,9 @@ static void verify_committed_font(const char *path,
         'A', '0', 0x25A1U, 0x5586U, 0x6B4CU, 0x767CU,
         0x88E1U, 0x8BCDU,
         0xD55CU, 0xAD6DU, 0xC5B4U,
+        0x30FCU, 0x301CU, 0x31F0U, 0xFF71U,
+        0x50CDU, 0x8FBBU, 0x9AD9U, 0xFA11U, 0x20BB7U,
+        0x266AU, 0x266BU, 0x266CU, 0x266DU, 0x266EU, 0x266FU,
     };
     for (size_t i = 0; i < sizeof(required) / sizeof(required[0]); i++) {
         ImmersiveFontGlyph glyph;

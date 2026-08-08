@@ -21,9 +21,9 @@ OPENCC_HK_VARIANTS_SHA256=e5cd4345303224587102f2c9e4d2b67d2b7e349c6ce9152e4a118f
 OPENCC_LICENSE_URL="https://raw.githubusercontent.com/BYVoid/OpenCC/$OPENCC_COMMIT/LICENSE"
 OPENCC_LICENSE_SHA256=b534e465949558eec2597b04f5092b5e161236a68dfbfd04d547592ac3964308
 KOREAN_SYLLABLES=3500
-IMMERSIVE_SHA256=31511e1cf8fa116443127c2c2c0d01be8b88f65a7f38f8fc84dd4f2deeb41b8c
-CONTENT_POINT_SHA256=6edc711063dc30714cad0733676f79a61418bb5abf685e727ae61a819c8ebc21
-CONTENT_LARGE_POINT_SHA256=ab3d257fff0cb70b629c9c1fd5165607b3d0e10f2378ffcfb0ba8da629a418e8
+IMMERSIVE_SHA256=5c0455371adde4a7d0c88c99eb44220028d3d7ad46e17f95356fe209ba424d88
+CONTENT_POINT_SHA256=f476603ef26d869eb5eca5f23ac7aed0977f8f1e2934ecd3b09fdd8fc97d591e
+CONTENT_LARGE_POINT_SHA256=7cbed476d02e5b89315b6f209d3529ddcffc80ddab33e5bc22f990ff5a942f7a
 UI_FONT_SHA256=50188f89a2526b1c34664a51aeee0517e3a9939f78f67cc0501df16f857e4907
 UI_FONT_SIZE=9
 DEVKITARM_IMAGE=${DEVKITARM_IMAGE:-devkitpro/devkitarm@sha256:116afba8df8453961de2936ffab20dd441edf4d682856c1ec8b0e53d7ed0bbf5}
@@ -131,6 +131,7 @@ printf '%s  %s\n' "$OPENCC_LICENSE_SHA256" \
     --dictionary "$ROOT/romfs/pinyin_dict.bin" \
     --source "$ROOT/source/ui.c" \
     --extra "$ROOT/tools/content-font-extra-chars.txt" \
+    --extra "$ROOT/tools/japanese-font-extra-chars.txt" \
     --traditional-map "$TMP/STCharacters.txt" \
     --traditional-map "$TMP/TWVariants.txt" \
     --traditional-map "$TMP/HKVariants.txt" \
@@ -196,7 +197,7 @@ large_point_size=$(wc -c < \
     "$ROOT/romfs/content-large-point-font.bin" | tr -d ' ')
 ui_font_size=$(wc -c < "$ROOT/romfs/ui-menu-font.bcfnt" | tr -d ' ')
 echo "installed Noto Sans CJK $VERSION monochrome point fonts"
-echo "  12px glyphs in 18px Chinese/Latin/${KOREAN_SYLLABLES}-Hangul content cells: $point_size bytes"
+echo "  12px glyphs in 18px Chinese/Japanese/Latin/${KOREAN_SYLLABLES}-Hangul content cells: $point_size bytes"
 echo "  15px glyphs for 21/24px semantic titles: $large_point_size bytes"
-echo "  24px Chinese/Latin/${KOREAN_SYLLABLES}-Hangul immersive: $immersive_size bytes"
+echo "  24px Chinese/Japanese/Latin/${KOREAN_SYLLABLES}-Hangul immersive: $immersive_size bytes"
 echo "  ${UI_FONT_SIZE}pt A4 fixed UI BCFNT: $ui_font_size bytes"
