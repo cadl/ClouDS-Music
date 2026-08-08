@@ -31,7 +31,7 @@ test rather than a substitute for Old 3DS timing and hardware behavior.
 3. Confirm both screens render smoothly at the 30 FPS presentation rate while
    held D-Pad input and playback progress continue updating responsively at the
    60 Hz main-loop rate, without missed repeats or audio underruns.
-4. Confirm the D-Pad and Circle Pad both navigate lists and the 2x2 Discover
+4. Confirm the D-Pad and Circle Pad both navigate lists and the 2x3 Discover
    home in the visible up/down/left/right directions.
 5. Open Search from Discover, type `wangyiyun`, commit a Chinese candidate,
    cancel and reopen the IME three times. Confirm Chinese and multi-character
@@ -156,6 +156,49 @@ probe failures are logged only once until connectivity succeeds again.
     retrying for at least two intervals and confirm the same outage produces
     only one `operation=network_probe` failure entry; restore connectivity and
     confirm a later outage can produce a new entry.
+
+## Music cloud
+
+Use a disposable test account or non-sensitive uploads. Never attach
+`auth.bin`, cookies, `MUSIC_U`, or resolved media URLs to test reports.
+
+1. Log in and open Music Cloud from Discover. Confirm the list loads eight API
+   rows per page off the main thread, `Left`/`Right` changes pages without a
+   duplicate boundary row, `Y` refreshes the current page, and `B` promptly
+   cancels an in-flight request. Repeat with an empty cloud and with one invalid
+   or incomplete item among valid items; the UI must remain usable and show an
+   actionable empty/error state.
+2. In Chinese and English, verify long song and artist names remain inside the
+   400x240 list, the selected row shows the original file extension and size,
+   and short format labels such as `MP3`, `FLAC`, `M4A`, and an unknown format
+   do not overlap the scrollbar or page footer.
+3. Play an MP3 upload through initial buffering, progressive playback, seek
+   handoff, completion, automatic next-song selection, and offline replay from
+   a complete cache. Confirm no whole compressed file or decoded PCM copy is
+   retained in memory.
+4. Play a FLAC upload that the service can resolve. Confirm the list continues
+   to label the original as `FLAC`, while the playback response and cached
+   `audio.mp3` are MP3 at standard quality. The app must not feed the original
+   FLAC bytes to minimp3 or claim lossless playback.
+5. Repeat with an upload not matched to the public catalogue and with a FLAC
+   upload the service cannot transcode. The unmatched song should play when a
+   valid MP3 URL is returned; an unavailable song must show the service error
+   without bypassing region, VIP, purchase, or removal restrictions.
+6. With a controlled playback response, return `flac`, `aac`, or another
+   explicit non-MP3 `type`/`encodeType`. Confirm the request stops before media
+   download, no `.part` file remains, and the UI reports that this build only
+   supports MP3. Also test a missing format field with valid MP3 data so normal
+   decoder validation remains the fallback.
+7. Fully cache a private cloud song, restart, then log out and switch to a
+   different account. Confirm the saved queue entry and its full cache cannot
+   be played or prefetched by the other account. Log back into the owner account
+   and confirm access returns. A trial cache must continue to follow the normal
+   trial policy rather than exposing a private full file.
+8. On an Old 3DS/2DS, page through a large cloud, start a FLAC-origin song that
+   resolves to MP3, reopen the page during playback, and monitor `heap_free`,
+   `linear_free`, input latency, SD writes, underruns, and sleep/resume. Memory
+   headroom must remain stable and the growing `.part` file must continue to use
+   the existing low-priority prefetch path.
 
 ## Playback
 

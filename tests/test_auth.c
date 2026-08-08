@@ -45,6 +45,8 @@ int main(void) {
     assert(strcmp(client.music_u, token) == 0);
     assert(strstr(client.cookie, token) != NULL);
     assert(netease_logged_in(&client));
+    client.user_id = 1234567;
+    snprintf(client.nickname, sizeof(client.nickname), "Cloud owner");
 
     char error[192];
     assert(auth_save(&client, path, error, sizeof(error)) == 0);
@@ -54,7 +56,7 @@ int main(void) {
     assert(fread(&header, 1, sizeof(header), saved) == sizeof(header));
     assert(fclose(saved) == 0);
     assert(memcmp(header.magic, "AUTH", 4) == 0);
-    assert(header.version == 2);
+    assert(header.version == 3);
 
     NeteaseClient loaded;
     memset(&loaded, 0, sizeof(loaded));
@@ -62,6 +64,8 @@ int main(void) {
     assert(strcmp(loaded.device_id, client.device_id) == 0);
     assert(strcmp(loaded.music_u, token) == 0);
     assert(strstr(loaded.cookie, token) != NULL);
+    assert(loaded.user_id == client.user_id);
+    assert(strcmp(loaded.nickname, client.nickname) == 0);
 
     char oversized[NETEASE_MUSIC_U_CAPACITY + 1];
     make_token(oversized, NETEASE_MUSIC_U_CAPACITY);

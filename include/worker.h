@@ -13,6 +13,7 @@ typedef enum {
     WORKER_JOB_NONE = 0,
     WORKER_JOB_DISCOVER,
     WORKER_JOB_USER_PLAYLISTS,
+    WORKER_JOB_USER_CLOUD,
     WORKER_JOB_PLAYLIST_TRACKS,
     WORKER_JOB_PLAYLIST_ENQUEUE,
     WORKER_JOB_ALBUM_TRACKS,
@@ -77,6 +78,8 @@ typedef struct {
     size_t song_count;
     NeteasePlaylist playlists[NM3DS_LIBRARY_PAGE];
     size_t playlist_count;
+    NeteaseCloudTrack cloud_tracks[NM3DS_CLOUD_PAGE];
+    size_t cloud_track_count;
     int64_t playlist_id;
     size_t playlist_track_total;
     int64_t album_id;

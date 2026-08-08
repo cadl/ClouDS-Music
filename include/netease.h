@@ -37,6 +37,7 @@ typedef struct {
 
 typedef struct {
     bool is_trial;
+    char format[NM3DS_CLOUD_FORMAT_CAPACITY];
 } NeteasePlaybackInfo;
 
 void netease_init(NeteaseClient *client);
@@ -69,6 +70,10 @@ int netease_user_playlists(NeteaseClient *client, size_t offset,
                            NeteasePlaylist *playlists, size_t capacity,
                            size_t *count, bool *has_more,
                            char *error, size_t error_size);
+int netease_user_cloud(NeteaseClient *client, size_t offset,
+                       NeteaseCloudTrack *tracks, size_t capacity,
+                       size_t *count, bool *has_more,
+                       char *error, size_t error_size);
 int netease_playlist_tracks(NeteaseClient *client, int64_t playlist_id,
                             size_t offset, bool refresh_index,
                             Song *songs, size_t capacity,

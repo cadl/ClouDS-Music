@@ -11,6 +11,7 @@
 #include "i18n.h"
 #include "net.h"
 #include "netease.h"
+#include "now_playing_policy.h"
 #include "playlist.h"
 #include "player.h"
 #include "playback_navigation.h"
@@ -64,6 +65,7 @@ typedef struct {
 
 static bool submit_cache_job(AppState *app, NetworkWorker *worker,
                              WorkerJobKind kind);
+static bool submit_account_check(AppState *app, NetworkWorker *worker);
 static void set_playing_status(AppState *app, int index);
 static void maybe_submit_song_extras(AppState *app, NetworkWorker *worker,
                                      int index);
@@ -333,6 +335,7 @@ static const char *worker_job_label(WorkerJobKind kind) {
         case WORKER_JOB_RECOMMENDATION_ENQUEUE:
             return "recommendation_enqueue";
         case WORKER_JOB_USER_PLAYLISTS: return "user_playlists";
+        case WORKER_JOB_USER_CLOUD: return "user_cloud";
         case WORKER_JOB_PLAYLIST_TRACKS: return "playlist_tracks";
         case WORKER_JOB_PLAYLIST_ENQUEUE: return "playlist_enqueue";
         case WORKER_JOB_ALBUM_TRACKS: return "album_tracks";
@@ -558,6 +561,7 @@ static bool worker_kind_uses_network(const WorkerResult *result) {
         case WORKER_JOB_DISCOVER:
         case WORKER_JOB_RECOMMENDATION_ENQUEUE:
         case WORKER_JOB_USER_PLAYLISTS:
+        case WORKER_JOB_USER_CLOUD:
         case WORKER_JOB_PLAYLIST_TRACKS:
         case WORKER_JOB_PLAYLIST_ENQUEUE:
         case WORKER_JOB_ALBUM_TRACKS:
@@ -580,6 +584,12 @@ static void playlist_persistence_error(AppState *app, const char *error) {
 static int request_queue_index(AppState *app, NetworkWorker *worker,
                                int index, bool force_download) {
     if (!worker || index < 0 || (size_t)index >= app->queue_count) return -1;
+    if (!song_cloud_access_allowed(&app->queue[index], app->logged_in,
+                                   app->user_id)) {
+        i18n_snprintf(app->status, sizeof(app->status),
+                      "请登录当前音乐云盘账户");
+        return -1;
+    }
     bool offline = !app->network_online;
     if (offline && (force_download ||
         !app->queue_offline_playable[index])) {
@@ -605,8 +615,8 @@ static int request_queue_index(AppState *app, NetworkWorker *worker,
     job.cache_limit = app->cache_limit;
     job.force_download = force_download;
     job.offline_playback = offline;
-    job.allow_full_cache = song_offline_full_allowed(&job.song,
-                                                     app->logged_in);
+    job.allow_full_cache = song_offline_full_allowed_for_user(
+        &job.song, app->logged_in, app->user_id);
     if (network_worker_submit(worker, &job)) return 0;
     app->pending_queue = -1;
     show_error(app, "无法启动歌曲任务");
@@ -795,6 +805,9 @@ static void move_selection(AppState *app, int delta) {
         } else if (app->discover_section == DISCOVER_RECOMMENDATIONS) {
             selected = &app->discover_selected;
             count = app->discover_count;
+        } else if (app->discover_section == DISCOVER_CLOUD) {
+            selected = &app->cloud_track_selected;
+            count = app->cloud_track_count;
         } else if (app->discover_section == DISCOVER_SEARCH) {
             if (app->search_page.loading) return;
             selected = &app->search_selected;
@@ -832,7 +845,7 @@ static void move_queue_page(AppState *app, int direction) {
 static void move_discover_home(AppState *app, int dx, int dy) {
     if (!app || app->discover_section != DISCOVER_HOME) return;
     app->discover_home_selected = navigation_grid_move(
-        app->discover_home_selected, DISCOVER_ITEM_COUNT, 2, 2, dx, dy);
+        app->discover_home_selected, DISCOVER_ITEM_COUNT, 2, 3, dx, dy);
 }
 
 static void move_recommendation_source(AppState *app, int dx) {
@@ -930,6 +943,14 @@ static void reset_library(AppState *app) {
     app->bulk_enqueue_processed = 0;
     app->bulk_enqueue_added = 0;
     app->bulk_enqueue_existing = 0;
+}
+
+static void reset_cloud(AppState *app) {
+    if (!app) return;
+    app->cloud_track_count = 0;
+    app->cloud_track_selected = 0;
+    app->cloud_track_offset = 0;
+    app->cloud_track_has_more = false;
 }
 
 static bool network_task_busy(NetworkWorker *worker) {
@@ -1036,6 +1057,31 @@ static void load_library_tracks(AppState *app, NetworkWorker *worker,
                       "歌曲加载中 · 第 %u 页",
                       (unsigned int)(offset / NM3DS_LIBRARY_PAGE + 1));
     else show_error(app, "无法启动歌单歌曲任务");
+}
+
+static void load_cloud_tracks(AppState *app, NetworkWorker *worker,
+                              size_t offset) {
+    if (!app || !worker) return;
+    if (!app->logged_in) {
+        i18n_snprintf(app->status, sizeof(app->status),
+                      "登录后才能查看音乐云盘");
+        return;
+    }
+    if (app->user_id <= 0) {
+        i18n_snprintf(app->status, sizeof(app->status),
+                      "正在验证账户，随后加载音乐云盘");
+        return;
+    }
+    app->mode = APP_LOADING_CLOUD;
+    WorkerJob job;
+    memset(&job, 0, sizeof(job));
+    job.kind = WORKER_JOB_USER_CLOUD;
+    job.offset = offset;
+    if (network_worker_submit(worker, &job))
+        i18n_snprintf(app->status, sizeof(app->status),
+                      "云盘加载中 · 第 %u 页",
+                      (unsigned int)(offset / NM3DS_CLOUD_PAGE + 1));
+    else show_error(app, "无法启动云盘任务");
 }
 
 static void reset_album(AppState *app) {
@@ -1394,6 +1440,26 @@ static void open_discover_item(AppState *app, NetworkWorker *worker,
                               "我的网易云歌单");
             }
             break;
+        case DISCOVER_ITEM_CLOUD:
+            app->discover_section = DISCOVER_CLOUD;
+            if (!app->logged_in) {
+                app->account_open = true;
+                app->login_continuation = LOGIN_CONTINUATION_CLOUD;
+                app->logout_confirm_until = 0;
+                i18n_snprintf(app->status, sizeof(app->status),
+                              "登录后可查看音乐云盘");
+            } else if (app->user_id <= 0 && network_ready && !busy) {
+                (void)submit_account_check(app, worker);
+                i18n_snprintf(app->status, sizeof(app->status),
+                              "正在验证账户，随后加载音乐云盘");
+            } else if (app->cloud_track_count == 0 &&
+                       network_ready && !busy) {
+                load_cloud_tracks(app, worker, 0);
+            } else {
+                i18n_snprintf(app->status, sizeof(app->status),
+                              "我的网易云音乐云盘");
+            }
+            break;
         case DISCOVER_ITEM_SEARCH:
             app->discover_section = DISCOVER_SEARCH;
             i18n_snprintf(app->status, sizeof(app->status), "%s",
@@ -1504,6 +1570,10 @@ static const Song *selected_song(const AppState *app) {
         if (app->discover_section == DISCOVER_RECOMMENDATIONS &&
             app->discover_count > 0)
             return &app->discover[app->discover_selected];
+        if (app->discover_section == DISCOVER_CLOUD &&
+            app->cloud_track_count > 0 && app->cloud_track_selected >= 0 &&
+            (size_t)app->cloud_track_selected < app->cloud_track_count)
+            return &app->cloud_tracks[app->cloud_track_selected].song;
     }
     if (app->tab == TAB_DISCOVER &&
         app->discover_section == DISCOVER_SEARCH && app->search_count > 0)
@@ -1626,8 +1696,8 @@ static void set_queue_song_cached(AppState *app, int64_t song_id,
     int index = queue_index_for_song(app, song_id);
     if (index >= 0) {
         app->queue_offline_playable[index] =
-            cached && (audio_is_trial || song_offline_full_allowed(
-                &app->queue[index], app->logged_in));
+            cached && (audio_is_trial || song_offline_full_allowed_for_user(
+                &app->queue[index], app->logged_in, app->user_id));
         app->queue_cache_known[index] = true;
     }
 }
@@ -1784,8 +1854,8 @@ static void maybe_submit_song_prefetch(AppState *app, Player *player,
     job.song = app->queue[candidate];
     job.protected_song = current_id;
     job.cache_limit = app->cache_limit;
-    job.allow_full_cache = song_offline_full_allowed(
-        &job.song, app->logged_in);
+    job.allow_full_cache = song_offline_full_allowed_for_user(
+        &job.song, app->logged_in, app->user_id);
     if (network_worker_submit(worker, &job))
         app->prefetch_active_song_id = job.song.id;
 }
@@ -1826,8 +1896,8 @@ static bool submit_next_queue_cache_check(AppState *app,
     job.song = app->queue[index];
     job.offset = index;
     job.queue_cache_scan_generation = app->queue_cache_scan_generation;
-    job.allow_full_cache = song_offline_full_allowed(
-        &job.song, app->logged_in);
+    job.allow_full_cache = song_offline_full_allowed_for_user(
+        &job.song, app->logged_in, app->user_id);
     job.background = true;
     if (!network_worker_submit(worker, &job)) return false;
     app->queue_cache_scan_in_flight = true;
@@ -2185,6 +2255,7 @@ static void apply_worker_result(AppState *app, PlaylistStore *store,
                 app->user_id = 0;
                 reset_discover(app);
                 reset_library(app);
+                reset_cloud(app);
                 begin_queue_cache_scan(app, true);
                 i18n_snprintf(app->status, sizeof(app->status),
                               "登录已过期，请重新登录");
@@ -2249,6 +2320,26 @@ static void apply_worker_result(AppState *app, PlaylistStore *store,
                      "已加载 %u 个歌单 · 第 %u 页",
                      (unsigned int)result->playlist_count,
                      (unsigned int)(result->offset / NM3DS_LIBRARY_PAGE + 1));
+            break;
+        case WORKER_JOB_USER_CLOUD:
+            if (!app->logged_in || app->user_id <= 0 ||
+                (result->cloud_track_count > 0 &&
+                 result->cloud_tracks[0].song.cloud_owner_user_id !=
+                     app->user_id))
+                break;
+            memcpy(app->cloud_tracks, result->cloud_tracks,
+                   result->cloud_track_count *
+                       sizeof(result->cloud_tracks[0]));
+            app->cloud_track_count = result->cloud_track_count;
+            app->cloud_track_selected = 0;
+            app->cloud_track_offset = result->offset;
+            app->cloud_track_has_more = result->has_more;
+            app->mode = player_is_active(player) ? APP_PLAYING : APP_IDLE;
+            i18n_snprintf(app->status, sizeof(app->status),
+                          "已加载 %u 首云盘歌曲 · 第 %u 页",
+                          (unsigned int)result->cloud_track_count,
+                          (unsigned int)(result->offset /
+                                         NM3DS_CLOUD_PAGE + 1));
             break;
         case WORKER_JOB_PLAYLIST_TRACKS:
             if (result->playlist_id != app->library_open_id) break;
@@ -2504,10 +2595,14 @@ static void apply_worker_result(AppState *app, PlaylistStore *store,
             if (!pending && !current) break;
             apply_song_cover_url(app, store, result->song_id,
                                  result->song_pic_url);
-            if (pending && !current) {
+            if (!now_playing_extras_should_apply(
+                    app->queue_count, app->current_queue,
+                    app->pending_queue, index)) {
                 /* The pending song is cached but must not replace the cover
-                 * and lyrics of audio that is still playing.  Re-submit at
-                 * handoff; the worker will satisfy it from the cache. */
+                 * and lyrics of different audio that is still playing.
+                 * Re-submit at handoff; the worker will satisfy it from the
+                 * cache.  With no current audio, apply the pending result now
+                 * so a known no-lyrics result does not need a second request. */
                 app->extras_song_id = -1;
                 break;
             }
@@ -2551,6 +2646,7 @@ static void apply_worker_result(AppState *app, PlaylistStore *store,
                 ui_clear_login_qr(ui);
                 reset_discover(app);
                 reset_library(app);
+                reset_cloud(app);
                 char auth_error[192];
                 if (auth_save(client, AUTH_PATH,
                               auth_error, sizeof(auth_error)) != 0)
@@ -2561,6 +2657,10 @@ static void apply_worker_result(AppState *app, PlaylistStore *store,
                     app->account_open = false;
                     app->discover_section = DISCOVER_LIBRARY;
                     load_library_playlists(app, worker, 0);
+                } else if (continuation == LOGIN_CONTINUATION_CLOUD) {
+                    app->account_open = false;
+                    app->discover_section = DISCOVER_CLOUD;
+                    load_cloud_tracks(app, worker, 0);
                 } else if (continuation ==
                            LOGIN_CONTINUATION_DAILY_RECOMMENDATION) {
                     app->account_open = false;
@@ -2584,12 +2684,22 @@ static void apply_worker_result(AppState *app, PlaylistStore *store,
             i18n_snprintf(app->nickname, sizeof(app->nickname), "%s",
                      result->nickname);
             app->user_id = result->user_id;
-            i18n_snprintf(app->status, sizeof(app->status), "已登录：%s",
-                     result->nickname);
+            char auth_error[192];
+            if (auth_save(client, AUTH_PATH,
+                          auth_error, sizeof(auth_error)) != 0)
+                i18n_snprintf(app->status, sizeof(app->status), "%s",
+                              auth_error);
+            else
+                i18n_snprintf(app->status, sizeof(app->status), "已登录：%s",
+                              result->nickname);
             if (app->tab == TAB_DISCOVER &&
                 app->discover_section == DISCOVER_LIBRARY &&
                 app->library_playlist_count == 0)
                 load_library_playlists(app, worker, 0);
+            else if (app->tab == TAB_DISCOVER &&
+                     app->discover_section == DISCOVER_CLOUD &&
+                     app->cloud_track_count == 0)
+                load_cloud_tracks(app, worker, 0);
             break;
         case WORKER_JOB_CACHE_SCAN:
             apply_cache_stats(app, result);
@@ -2894,6 +3004,8 @@ static void update_worker(AppState *app, PlaylistStore *store,
             app->mode = APP_LOADING_DISCOVER;
         else if (snapshot.kind == WORKER_JOB_USER_PLAYLISTS)
             app->mode = APP_LOADING_LIBRARY;
+        else if (snapshot.kind == WORKER_JOB_USER_CLOUD)
+            app->mode = APP_LOADING_CLOUD;
         else if (snapshot.kind == WORKER_JOB_PLAYLIST_TRACKS)
             app->mode = APP_LOADING_LIBRARY_TRACKS;
         else if (snapshot.kind == WORKER_JOB_ALBUM_TRACKS)
@@ -2985,6 +3097,15 @@ static void retry_offline_discover(AppState *app, Ui *ui, Player *player,
             load_library_tracks(app, worker, app->library_open_id,
                                 app->library_open_name,
                                 app->library_track_offset);
+        }
+    } else if (app->discover_section == DISCOVER_CLOUD) {
+        if (!app->logged_in) {
+            app->account_open = true;
+            app->login_continuation = LOGIN_CONTINUATION_CLOUD;
+        } else if (app->user_id <= 0) {
+            (void)submit_account_check(app, worker);
+        } else {
+            load_cloud_tracks(app, worker, app->cloud_track_offset);
         }
     } else if (app->discover_section == DISCOVER_SEARCH) {
         if (app->query[0])
@@ -3146,7 +3267,12 @@ int main(void) {
     netease_init(&client);
     int auth_result = auth_load(&client, AUTH_PATH,
                                 startup_error, sizeof(startup_error));
-    if (auth_result == 0) app.logged_in = true;
+    if (auth_result == 0) {
+        app.logged_in = true;
+        app.user_id = client.user_id;
+        i18n_snprintf(app.nickname, sizeof(app.nickname), "%s",
+                      client.nickname);
+    }
     else if (auth_result < 0) auth_clear(&client, AUTH_PATH);
     begin_queue_cache_scan(&app, true);
     ui_draw_startup(ui, 6, STARTUP_STEP_COUNT,
@@ -3382,6 +3508,7 @@ int main(void) {
                     app.user_id = 0;
                     reset_discover(&app);
                     reset_library(&app);
+                    reset_cloud(&app);
                     begin_queue_cache_scan(&app, true);
                     app.login_qr_ready = false;
                     app.login_continuation = LOGIN_CONTINUATION_NONE;
@@ -3653,6 +3780,13 @@ int main(void) {
                     load_library_playlists(
                         &app, worker,
                         app.library_playlist_offset - NM3DS_LIBRARY_PAGE);
+                else if (app.discover_section == DISCOVER_CLOUD &&
+                         network_ready && app.network_online &&
+                         !network_task_busy(worker) &&
+                         app.cloud_track_offset >= NM3DS_CLOUD_PAGE)
+                    load_cloud_tracks(
+                        &app, worker,
+                        app.cloud_track_offset - NM3DS_CLOUD_PAGE);
             }
             if ((down & KEY_RIGHT) != 0 &&
                 app.focus == APP_FOCUS_CONTENT &&
@@ -3680,6 +3814,13 @@ int main(void) {
                     load_library_playlists(
                         &app, worker,
                         app.library_playlist_offset + NM3DS_LIBRARY_PAGE);
+                else if (app.discover_section == DISCOVER_CLOUD &&
+                         network_ready && app.network_online &&
+                         !network_task_busy(worker) &&
+                         app.cloud_track_has_more)
+                    load_cloud_tracks(
+                        &app, worker,
+                        app.cloud_track_offset + NM3DS_CLOUD_PAGE);
             }
             if ((down & KEY_LEFT) != 0 &&
                 app.focus == APP_FOCUS_CONTENT && app.tab == TAB_DISCOVER &&
@@ -3727,6 +3868,13 @@ int main(void) {
                     !network_task_busy(worker)) {
                     remember_discover_page(&app);
                     load_discover(&app, worker, app.discover_offset);
+                } else if (app.focus == APP_FOCUS_CONTENT &&
+                           app.tab == TAB_DISCOVER &&
+                           app.discover_section == DISCOVER_CLOUD &&
+                           app.logged_in && app.user_id > 0 &&
+                           app.network_online &&
+                           !network_task_busy(worker)) {
+                    load_cloud_tracks(&app, worker, app.cloud_track_offset);
                 }
             }
             if (down & KEY_SELECT) {
@@ -3796,6 +3944,26 @@ int main(void) {
                         (void)request_selected_song(
                             &app, &playlist_store, worker,
                             &app.library_tracks[app.library_track_selected]);
+                    }
+                } else if (app.tab == TAB_DISCOVER &&
+                           app.discover_section == DISCOVER_CLOUD) {
+                    if (!app.logged_in) {
+                        app.account_open = true;
+                        app.login_continuation = LOGIN_CONTINUATION_CLOUD;
+                        app.logout_confirm_until = 0;
+                        i18n_snprintf(app.status, sizeof(app.status),
+                                      "尚未登录");
+                    } else if (app.user_id <= 0) {
+                        (void)submit_account_check(&app, worker);
+                    } else if (app.network_online &&
+                               app.cloud_track_count > 0) {
+                        (void)request_selected_song(
+                            &app, &playlist_store, worker,
+                            &app.cloud_tracks[
+                                app.cloud_track_selected].song);
+                    } else if (app.network_online) {
+                        load_cloud_tracks(&app, worker,
+                                          app.cloud_track_offset);
                     }
                 } else if (app.tab == TAB_SETTINGS) {
                     if (app.settings_selected == SETTINGS_LANGUAGE)

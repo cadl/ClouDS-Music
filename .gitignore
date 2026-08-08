@@ -14,6 +14,7 @@ __pycache__/
 *.pyc
 .tools/
 tests/test_json
+tests/test_cloud_data
 tests/test_ime
 tests/test_ime_candidate_layout
 tests/test_i18n

@@ -12,6 +12,8 @@
 #define NM3DS_RECOMMEND_RESULTS 18
 #define NM3DS_LIBRARY_PAGE 8
 #define NM3DS_LIBRARY_BATCH_PAGE NM3DS_LIBRARY_PAGE
+#define NM3DS_CLOUD_PAGE 8
+#define NM3DS_CLOUD_FORMAT_CAPACITY 12
 #define NM3DS_ALBUM_PAGE 8
 #define NM3DS_ALBUM_VISIBLE_ROWS 7
 #define NM3DS_MAX_QUEUE 1000
@@ -55,6 +57,10 @@ typedef struct {
     char album[96];
     char pic_url[320];
     uint8_t fee;
+    /* Zero for catalog songs. Cloud songs are bound to the account that
+       listed them so a cached private upload cannot be reused after an
+       account switch. */
+    int64_t cloud_owner_user_id;
 } Song;
 
 static inline bool song_is_vip(const Song *song) {
@@ -64,9 +70,33 @@ static inline bool song_is_vip(const Song *song) {
 static inline bool song_offline_full_allowed(const Song *song,
                                              bool logged_in) {
     return song &&
+           song->cloud_owner_user_id == 0 &&
            (logged_in || song->fee == SONG_FEE_FREE ||
             song->fee == SONG_FEE_LOW_QUALITY_FREE);
 }
+
+static inline bool song_cloud_access_allowed(const Song *song,
+                                             bool logged_in,
+                                             int64_t user_id) {
+    return song && (song->cloud_owner_user_id == 0 ||
+                    (logged_in && user_id > 0 &&
+                     song->cloud_owner_user_id == user_id));
+}
+
+static inline bool song_offline_full_allowed_for_user(
+    const Song *song, bool logged_in, int64_t user_id) {
+    if (!song) return false;
+    if (song->cloud_owner_user_id > 0)
+        return song_cloud_access_allowed(song, logged_in, user_id);
+    return song_offline_full_allowed(song, logged_in);
+}
+
+typedef struct {
+    Song song;
+    uint64_t file_size;
+    uint32_t bitrate;
+    char format[NM3DS_CLOUD_FORMAT_CAPACITY];
+} NeteaseCloudTrack;
 
 typedef struct {
     uint32_t time_ms;
@@ -101,6 +131,7 @@ typedef enum {
     DISCOVER_RECOMMENDATION_SOURCES,
     DISCOVER_RECOMMENDATIONS,
     DISCOVER_LIBRARY,
+    DISCOVER_CLOUD,
     DISCOVER_SEARCH
 } DiscoverSection;
 
@@ -113,6 +144,7 @@ typedef enum {
 typedef enum {
     DISCOVER_ITEM_RECOMMENDATIONS = 0,
     DISCOVER_ITEM_LIBRARY,
+    DISCOVER_ITEM_CLOUD,
     DISCOVER_ITEM_SEARCH,
     DISCOVER_ITEM_ACCOUNT,
     DISCOVER_ITEM_COUNT
@@ -138,6 +170,7 @@ typedef enum {
 typedef enum {
     LOGIN_CONTINUATION_NONE = 0,
     LOGIN_CONTINUATION_LIBRARY,
+    LOGIN_CONTINUATION_CLOUD,
     LOGIN_CONTINUATION_DAILY_RECOMMENDATION
 } LoginContinuation;
 
@@ -147,6 +180,7 @@ typedef enum {
     APP_LOADING_DISCOVER,
     APP_LOADING_LIBRARY,
     APP_LOADING_LIBRARY_TRACKS,
+    APP_LOADING_CLOUD,
     APP_LOADING_ALBUM,
     APP_BULK_ENQUEUE,
     APP_LOADING_EXTRAS,
@@ -219,6 +253,12 @@ typedef struct {
     int library_track_selected;
     size_t library_track_offset;
     bool library_track_has_more;
+
+    NeteaseCloudTrack cloud_tracks[NM3DS_CLOUD_PAGE];
+    size_t cloud_track_count;
+    int cloud_track_selected;
+    size_t cloud_track_offset;
+    bool cloud_track_has_more;
     BulkEnqueueKind bulk_enqueue_kind;
     RecommendationSource bulk_enqueue_recommendation_source;
     bool bulk_enqueue_confirm;
