@@ -75,8 +75,16 @@
 #define MODE_H SECONDARY_CONTROL_H
 #define ALBUM_X 10
 #define ALBUM_Y SECONDARY_CONTROL_Y
-#define ALBUM_W 121
+#define ALBUM_W 58
 #define ALBUM_H SECONDARY_CONTROL_H
+#define ARTIST_X 72
+#define ARTIST_Y SECONDARY_CONTROL_Y
+#define ARTIST_W 59
+#define ARTIST_H SECONDARY_CONTROL_H
+#define DETAIL_BACK_X 10
+#define DETAIL_BACK_Y SECONDARY_CONTROL_Y
+#define DETAIL_BACK_W 121
+#define DETAIL_BACK_H SECONDARY_CONTROL_H
 #define IME_CANDIDATE_X 70.0f
 #define IME_CANDIDATE_RIGHT 316.0f
 #define IME_CANDIDATE_Y 3.0f
@@ -1429,6 +1437,179 @@ static void draw_album(Ui *ui, const AppState *app) {
     }
 }
 
+static int artist_window_start(size_t count, int selected) {
+    if (count <= NM3DS_ARTIST_VISIBLE_ROWS) return 0;
+    int first = selected - NM3DS_ARTIST_VISIBLE_ROWS / 2;
+    if (first < 0) first = 0;
+    if (first + NM3DS_ARTIST_VISIBLE_ROWS > (int)count)
+        first = (int)count - NM3DS_ARTIST_VISIBLE_ROWS;
+    return first < 0 ? 0 : first;
+}
+
+static void draw_artist_picker_row(Ui *ui, const AppState *app,
+                                   int index, int row) {
+    const NeteaseArtist *artist = &app->artist_choices[index];
+    float y = (float)(UI_ALBUM_FIRST_ROW_Y + row * UI_ALBUM_ROW_STEP);
+    bool selected = app->focus == APP_FOCUS_CONTENT &&
+                    index == app->artist_choice_selected;
+    if (selected) {
+        C2D_DrawRectSolid(161, y - 2, 0.2f, 216,
+                          UI_ALBUM_ROW_STEP - 1, COL_PANEL_2);
+        C2D_DrawRectSolid(161, y - 2, 0.3f, 3,
+                          UI_ALBUM_ROW_STEP - 1, COL_RED);
+    }
+    char number[4];
+    snprintf(number, sizeof(number), "%02u", (unsigned int)index + 1U);
+    pixel_text(number, 168, y + 4, 0.5f, 1,
+               selected ? COL_ORANGE : COL_DIM);
+    smooth_text_fit(ui, artist->name, 192, y, UI_TEXT_LARGE, 176,
+                    selected ? COL_TEXT : COL_MUTED, 30);
+}
+
+static void draw_artist_album_row(Ui *ui, const AppState *app,
+                                  int index, int row) {
+    const NeteaseAlbum *album = &app->artist_albums[index];
+    float y = (float)(UI_ALBUM_FIRST_ROW_Y + row * UI_ALBUM_ROW_STEP);
+    bool selected = app->focus == APP_FOCUS_CONTENT &&
+                    index == app->artist_album_selected;
+    if (selected) {
+        C2D_DrawRectSolid(161, y - 2, 0.2f, 216,
+                          UI_ALBUM_ROW_STEP - 1, COL_PANEL_2);
+        C2D_DrawRectSolid(161, y - 2, 0.3f, 3,
+                          UI_ALBUM_ROW_STEP - 1, COL_RED);
+    }
+    char number[5];
+    size_t absolute = app->artist_album_offset + (size_t)index + 1U;
+    snprintf(number, sizeof(number), "%03u",
+             (unsigned int)(absolute > 999U ? absolute % 1000U : absolute));
+    pixel_text(number, 168, y + 4, 0.5f, 1,
+               selected ? COL_ORANGE : COL_DIM);
+    smooth_text_fit(ui, album->name, 192, y, UI_TEXT_LARGE, 137,
+                    selected ? COL_TEXT : COL_MUTED, 24);
+    char tracks[16];
+    i18n_snprintf(tracks, sizeof(tracks), "%u 首",
+                  (unsigned int)album->track_count);
+    menu_text_fit(ui, tracks, 334, y + 2, UI_TEXT_SMALL, 36,
+                  selected ? COL_CYAN : COL_DIM, 8);
+}
+
+static void draw_artist_song_row(Ui *ui, const AppState *app,
+                                 int index, int row) {
+    const Song *song = &app->artist_songs[index];
+    float y = (float)(UI_ALBUM_FIRST_ROW_Y + row * UI_ALBUM_ROW_STEP);
+    bool selected = app->focus == APP_FOCUS_CONTENT &&
+                    index == app->artist_song_selected;
+    if (selected) {
+        C2D_DrawRectSolid(161, y - 2, 0.2f, 216,
+                          UI_ALBUM_ROW_STEP - 1, COL_PANEL_2);
+        C2D_DrawRectSolid(161, y - 2, 0.3f, 3,
+                          UI_ALBUM_ROW_STEP - 1, COL_RED);
+    }
+    char number[5];
+    size_t absolute = app->artist_song_offset + (size_t)index + 1U;
+    snprintf(number, sizeof(number), "%03u",
+             (unsigned int)(absolute > 999U ? absolute % 1000U : absolute));
+    pixel_text(number, 168, y + 4, 0.5f, 1,
+               selected ? COL_ORANGE : COL_DIM);
+    draw_song_title(ui, song, 192, y, UI_TEXT_LARGE, 124,
+                    selected ? COL_TEXT : COL_MUTED, 22);
+    smooth_text_fit(ui,
+                    song->album[0] ? song->album : i18n_text("未知专辑"),
+                    322, y, UI_TEXT_SMALL, 52,
+                    selected ? COL_CYAN : COL_DIM, 12);
+}
+
+static void draw_artist_scrollbar(size_t count, int selected) {
+    C2D_DrawRectSolid(UI_ALBUM_SCROLLBAR_X, UI_ALBUM_SCROLLBAR_Y, 0.4f,
+                      UI_ALBUM_SCROLLBAR_WIDTH, UI_ALBUM_SCROLLBAR_HEIGHT,
+                      COL_GRID);
+    if (count == 0) return;
+    size_t visible = count < NM3DS_ARTIST_VISIBLE_ROWS ?
+                     count : NM3DS_ARTIST_VISIBLE_ROWS;
+    int first = artist_window_start(count, selected);
+    int thumb_height = ui_scrollbar_thumb_height(
+        UI_ALBUM_SCROLLBAR_HEIGHT, visible, count,
+        UI_ALBUM_SCROLLBAR_MIN_THUMB_HEIGHT);
+    int thumb_y = ui_scrollbar_thumb_y(
+        UI_ALBUM_SCROLLBAR_Y, UI_ALBUM_SCROLLBAR_HEIGHT, thumb_height,
+        (size_t)first, visible, count);
+    C2D_DrawRectSolid(UI_ALBUM_SCROLLBAR_X, thumb_y, 0.5f,
+                      UI_ALBUM_SCROLLBAR_WIDTH, thumb_height, COL_CYAN);
+}
+
+static void draw_artist(Ui *ui, const AppState *app) {
+    panel(10, 40, 138, 138, COL_PANEL, COL_GRID);
+    (void)brand_logo_draw(&ui->brand_logo, 15, 45, 0.5f, 128);
+    label_text(ui, "艺人", 12, 181, UI_TEXT_LABEL, COL_ORANGE);
+    const char *name = app->artist_name[0] ? app->artist_name :
+                       i18n_text("选择艺人");
+    smooth_text_fit(ui, name, 12, 199, UI_TEXT_LARGE, 134, COL_TEXT, 22);
+    const char *page_label = "请选择歌曲艺人";
+    char page[24];
+    if (app->now_playing_view == NOW_PLAYING_ARTIST_ALBUMS) {
+        i18n_snprintf(page, sizeof(page), "专辑 · 第 %u 页",
+                      (unsigned int)(app->artist_album_offset /
+                                     NM3DS_ARTIST_PAGE + 1));
+        page_label = page;
+    } else if (app->now_playing_view == NOW_PLAYING_ARTIST_SONGS) {
+        i18n_snprintf(page, sizeof(page), "歌曲 · 第 %u 页",
+                      (unsigned int)(app->artist_song_offset /
+                                     NM3DS_ARTIST_PAGE + 1));
+        page_label = page;
+    }
+    menu_text_fit(ui, i18n_text(page_label), 12, 220,
+                  UI_TEXT_BODY, 134, COL_MUTED, 18);
+
+    panel(157, 40, 233, 190, COL_PANEL,
+          app->focus == APP_FOCUS_CONTENT ? COL_CYAN : COL_GRID);
+    const char *title = app->now_playing_view == NOW_PLAYING_ARTIST_PICKER ?
+                        "歌曲艺人" :
+                        app->now_playing_view == NOW_PLAYING_ARTIST_ALBUMS ?
+                        "艺人专辑" : "艺人歌曲";
+    label_text(ui, title, 168, 43, UI_TEXT_LABEL, COL_CYAN);
+    const char *action = app->now_playing_view == NOW_PLAYING_ARTIST_PICKER ?
+                         "B 返回" :
+                         app->now_playing_view == NOW_PLAYING_ARTIST_ALBUMS ?
+                         "Y 歌曲" : "Y 专辑";
+    label_text(ui, action,
+               378.0f - label_width(ui, action, UI_TEXT_LABEL), 43,
+               UI_TEXT_LABEL, COL_MUTED);
+    C2D_DrawRectSolid(168, 64, 0.3f, 210, 1, COL_GRID);
+
+    size_t count = 0;
+    int selected = 0;
+    if (app->now_playing_view == NOW_PLAYING_ARTIST_PICKER) {
+        count = app->artist_choice_count;
+        selected = app->artist_choice_selected;
+    } else if (app->now_playing_view == NOW_PLAYING_ARTIST_ALBUMS) {
+        count = app->artist_album_count;
+        selected = app->artist_album_selected;
+    } else {
+        count = app->artist_song_count;
+        selected = app->artist_song_selected;
+    }
+    if (count == 0) {
+        const char *message = app->mode == APP_LOADING_ARTIST ?
+            "正在加载艺人内容" : "这个艺人没有可显示的内容";
+        menu_text_centered(ui, i18n_text(message),
+                           166, 112, 212, 44,
+                           UI_TEXT_LARGE, COL_MUTED, 20);
+    } else {
+        int first = artist_window_start(count, selected);
+        for (int row = 0;
+             row < NM3DS_ARTIST_VISIBLE_ROWS &&
+             first + row < (int)count; row++) {
+            int index = first + row;
+            if (app->now_playing_view == NOW_PLAYING_ARTIST_PICKER)
+                draw_artist_picker_row(ui, app, index, row);
+            else if (app->now_playing_view == NOW_PLAYING_ARTIST_ALBUMS)
+                draw_artist_album_row(ui, app, index, row);
+            else draw_artist_song_row(ui, app, index, row);
+        }
+    }
+    draw_artist_scrollbar(count, selected);
+}
+
 static void draw_compact_song_row(Ui *ui, const Song *song,
                                   unsigned int display_index,
                                   float y, bool selected) {
@@ -2306,7 +2487,9 @@ static void draw_top(Ui *ui, C3D_RenderTarget *target,
         draw_offline_discover(ui, app);
     else if (app->account_open) draw_account(ui, app);
     else if (app->tab == TAB_NOW_PLAYING) {
-        if (app->album_open) draw_album(ui, app);
+        if (app->now_playing_view == NOW_PLAYING_ALBUM) draw_album(ui, app);
+        else if (now_playing_view_is_artist(app->now_playing_view))
+            draw_artist(ui, app);
         else draw_now(ui, app, lyric_frame, eye_sign, stereo_slider);
     }
     else if (app->tab == TAB_DISCOVER) draw_discover(ui, app);
@@ -2379,6 +2562,7 @@ static bool page_task_is_busy(const AppState *app) {
                    app->mode == APP_LOADING_LIBRARY ||
                    app->mode == APP_LOADING_LIBRARY_TRACKS ||
                    app->mode == APP_LOADING_ALBUM ||
+                   app->mode == APP_LOADING_ARTIST ||
                    app->mode == APP_BULK_ENQUEUE ||
                    app->mode == APP_LOADING_EXTRAS ||
                    app->mode == APP_RESOLVING ||
@@ -2723,7 +2907,8 @@ static void draw_page_controls(Ui *ui, const AppState *app,
         return;
     }
 
-    if (app->album_open && app->focus == APP_FOCUS_CONTENT) {
+    if (app->now_playing_view == NOW_PLAYING_ALBUM &&
+        app->focus == APP_FOCUS_CONTENT) {
         title = "专辑控制";
         accent = COL_CYAN;
         bool has_items = app->album_track_count > 0;
@@ -2731,13 +2916,45 @@ static void draw_page_controls(Ui *ui, const AppState *app,
         add_control_hint(&hints, "A", "播放", accent,
                           has_items && app->mode != APP_LOADING_ALBUM);
         add_control_hint(&hints, "X", "全加", accent,
-                          has_items && !busy &&
+                          has_items && app->network_online && !busy &&
                           app->queue_count < NM3DS_MAX_QUEUE);
         add_control_hint(&hints, "B", busy ? "取消" : "返回", accent, true);
         add_control_hint(&hints, "SELECT", "列表", accent,
                           queue_has_selectable_item(app));
         add_control_hint(&hints, "<>", "翻页", accent,
                           has_items && !busy);
+        add_control_hint(&hints, "L/R", "切页", accent, true);
+        draw_control_hints(ui, title, accent, &hints);
+        return;
+    }
+
+    if (now_playing_view_is_artist(app->now_playing_view) &&
+        app->focus == APP_FOCUS_CONTENT) {
+        title = "艺人控制";
+        accent = COL_CYAN;
+        bool picker = app->now_playing_view == NOW_PLAYING_ARTIST_PICKER;
+        bool albums = app->now_playing_view == NOW_PLAYING_ARTIST_ALBUMS;
+        bool has_items = picker ? app->artist_choice_count > 0 :
+                         albums ? app->artist_album_count > 0 :
+                                  app->artist_song_count > 0;
+        add_control_hint(&hints, "UD", picker ? "选择" : "滚动",
+                          accent, has_items);
+        add_control_hint(&hints, "A",
+                          picker ? "确认" : albums ? "打开" : "播放",
+                          accent, has_items && app->mode != APP_LOADING_ARTIST);
+        if (!picker && !albums)
+            add_control_hint(&hints, "X", "全加", accent,
+                              has_items && app->network_online && !busy &&
+                              app->queue_count < NM3DS_MAX_QUEUE);
+        if (!picker)
+            add_control_hint(&hints, "Y", albums ? "歌曲" : "专辑",
+                              accent, !busy);
+        add_control_hint(&hints, "B", busy ? "取消" : "返回", accent, true);
+        add_control_hint(&hints, "SELECT", "列表", accent,
+                          queue_has_selectable_item(app));
+        if (!picker)
+            add_control_hint(&hints, "<>", "翻页", accent,
+                              has_items && !busy);
         add_control_hint(&hints, "L/R", "切页", accent, true);
         draw_control_hints(ui, title, accent, &hints);
         return;
@@ -2756,7 +2973,7 @@ static void draw_page_controls(Ui *ui, const AppState *app,
         add_control_hint(&hints, "A", primary, accent,
                           has_items && !selected_pending);
         add_control_hint(&hints, "X", "删除", COL_RED, has_items);
-        if (app->album_open)
+        if (now_playing_view_has_detail(app->now_playing_view))
             add_control_hint(&hints, "B", busy ? "取消" : "返回", accent, true);
         else if (app->tab == TAB_NOW_PLAYING && busy)
             add_control_hint(&hints, "B", "取消", accent, true);
@@ -2766,7 +2983,9 @@ static void draw_page_controls(Ui *ui, const AppState *app,
         else
             add_control_hint(&hints, "B", busy ? "取消" : "返回", accent, true);
         add_control_hint(&hints, "SELECT",
-                          app->album_open ? "专辑" :
+                          app->now_playing_view == NOW_PLAYING_ALBUM ? "专辑" :
+                          now_playing_view_is_artist(
+                              app->now_playing_view) ? "艺人" :
                           app->tab == TAB_NOW_PLAYING ? "模式" : "上屏",
                           accent, true);
         add_control_hint(&hints, "<>", "翻页", accent, has_items);
@@ -2980,13 +3199,24 @@ static void draw_bottom_player(Ui *ui, const AppState *app, const Player *player
     panel(MODE_X, MODE_Y, MODE_W, MODE_H, COL_PANEL_2, COL_GRID);
     label_centered(ui, mode_label, MODE_X, MODE_Y, MODE_W, MODE_H,
                    UI_TEXT_TINY, COL_MUTED);
-    bool album_enabled = app->album_open ||
-        (current_song(app) && app->network_online);
-    panel(ALBUM_X, ALBUM_Y, ALBUM_W, ALBUM_H, COL_PANEL_2,
-          COL_GRID);
-    label_centered(ui, app->album_open ? "返回" : "查看专辑",
-                   ALBUM_X, ALBUM_Y, ALBUM_W, ALBUM_H,
-                   UI_TEXT_TINY, album_enabled ? COL_TEXT : COL_DIM);
+    bool detail_open = now_playing_view_has_detail(app->now_playing_view);
+    bool detail_enabled = current_song(app) && app->network_online;
+    if (detail_open) {
+        panel(DETAIL_BACK_X, DETAIL_BACK_Y,
+              DETAIL_BACK_W, DETAIL_BACK_H, COL_PANEL_2, COL_GRID);
+        label_centered(ui, "返回", DETAIL_BACK_X, DETAIL_BACK_Y,
+                       DETAIL_BACK_W, DETAIL_BACK_H,
+                       UI_TEXT_TINY, COL_TEXT);
+    } else {
+        panel(ALBUM_X, ALBUM_Y, ALBUM_W, ALBUM_H, COL_PANEL_2, COL_GRID);
+        label_centered(ui, "专辑", ALBUM_X, ALBUM_Y, ALBUM_W, ALBUM_H,
+                       UI_TEXT_TINY, detail_enabled ? COL_TEXT : COL_DIM);
+        panel(ARTIST_X, ARTIST_Y, ARTIST_W, ARTIST_H,
+              COL_PANEL_2, COL_GRID);
+        label_centered(ui, "艺人", ARTIST_X, ARTIST_Y,
+                       ARTIST_W, ARTIST_H,
+                       UI_TEXT_TINY, detail_enabled ? COL_TEXT : COL_DIM);
+    }
 
     /* Use the full header width so the longest position (500/500) still
      * fits beside the four-glyph Chinese title. */
@@ -3200,13 +3430,17 @@ static void draw_bulk_enqueue_confirm(Ui *ui, const AppState *app) {
     bool recommendations =
         app->bulk_enqueue_kind == BULK_ENQUEUE_RECOMMENDATIONS;
     bool album = app->bulk_enqueue_kind == BULK_ENQUEUE_ALBUM;
+    bool artist = app->bulk_enqueue_kind == BULK_ENQUEUE_ARTIST_SONGS;
     const char *name = recommendations ?
         i18n_text(app->bulk_enqueue_recommendation_source ==
                   RECOMMEND_SOURCE_DAILY ? "每日推荐" : "公开新歌") :
-        album ? app->album_name : app->library_open_name;
+        album ? app->album_name :
+        artist ? (app->artist_name[0] ? app->artist_name :
+                  i18n_text("艺人歌曲")) : app->library_open_name;
     const char *description = recommendations ?
         "将按页添加当前来源的全部推荐歌曲" :
         album ? "将按页添加专辑中的全部歌曲" :
+        artist ? "将按页添加当前艺人的全部热门歌曲" :
                 "将按页添加歌单中的全部歌曲";
     char count[48] = {0};
     if (recommendations) {
@@ -3217,6 +3451,15 @@ static void draw_bulk_enqueue_confirm(Ui *ui, const AppState *app) {
     } else if (album)
         i18n_snprintf(count, sizeof(count), "歌曲数：%u 首",
                       (unsigned int)app->album_track_total);
+    else if (artist) {
+        size_t visible_total = app->artist_song_offset +
+                               app->artist_song_count;
+        i18n_snprintf(count, sizeof(count),
+                      app->artist_song_has_more ?
+                          "歌曲数：至少 %u 首" : "歌曲数：%u 首",
+                      (unsigned int)visible_total);
+    }
+    bool show_count = recommendations || album || artist;
     C2D_TargetClear(ui->bottom, COL_BG);
     C2D_SceneBegin(ui->bottom);
     C2D_DrawRectSolid(0, 0, 0.1f, 320, 3, COL_RED);
@@ -3226,14 +3469,14 @@ static void draw_bulk_enqueue_confirm(Ui *ui, const AppState *app) {
                        COL_CYAN, 16);
     smooth_text_fit(ui, name,
                     22, 79, UI_TEXT_BODY, 276, COL_TEXT, 48);
-    if (recommendations || album)
+    if (show_count)
         menu_text_fit(ui, count,
                       22, 105, UI_TEXT_LABEL, 276, COL_CYAN, 24);
     menu_text_fit(ui, i18n_text(description),
-                  22, recommendations || album ? 127 : 108, UI_TEXT_LABEL,
+                  22, show_count ? 127 : 108, UI_TEXT_LABEL,
                   276, COL_MUTED, 32);
     menu_text_fit(ui, i18n_text("播放列表空间不足时将停止添加"),
-                  22, recommendations || album ? 149 : 132,
+                  22, show_count ? 149 : 132,
                   UI_TEXT_LABEL,
                   276, COL_ORANGE, 32);
     panel(48, 174, 92, 23, COL_PANEL, COL_CYAN);
@@ -3251,14 +3494,19 @@ static void draw_bulk_enqueue_progress(Ui *ui, const AppState *app) {
     bool recommendations =
         app->bulk_enqueue_kind == BULK_ENQUEUE_RECOMMENDATIONS;
     bool album = app->bulk_enqueue_kind == BULK_ENQUEUE_ALBUM;
+    bool artist = app->bulk_enqueue_kind == BULK_ENQUEUE_ARTIST_SONGS;
     const char *name = recommendations ?
         i18n_text(app->bulk_enqueue_recommendation_source ==
                   RECOMMEND_SOURCE_DAILY ? "每日推荐" : "公开新歌") :
-        album ? app->album_name : app->library_open_name;
+        album ? app->album_name :
+        artist ? (app->artist_name[0] ? app->artist_name :
+                  i18n_text("艺人歌曲")) : app->library_open_name;
     size_t total_count = recommendations ? 0 :
-        album ? app->album_track_total : app->library_open_track_count;
+        album ? app->album_track_total :
+        artist ? 0 : app->library_open_track_count;
     size_t page_size = recommendations ? NM3DS_RECOMMEND_RESULTS :
-        album ? NM3DS_ALBUM_PAGE : NM3DS_LIBRARY_BATCH_PAGE;
+        album ? NM3DS_ALBUM_PAGE :
+        artist ? NM3DS_ARTIST_PAGE : NM3DS_LIBRARY_BATCH_PAGE;
     C2D_TargetClear(ui->bottom, COL_BG);
     C2D_SceneBegin(ui->bottom);
     C2D_DrawRectSolid(0, 0, 0.1f, 320, 3, COL_RED);
@@ -3615,7 +3863,7 @@ void ui_draw(Ui *ui, const AppState *app, const Player *player) {
     if (!ui || !app) return;
     bool now_playing_visible = !app->account_open &&
                                app->tab == TAB_NOW_PLAYING &&
-                               !app->album_open;
+                               app->now_playing_view == NOW_PLAYING_DEFAULT;
     LyricAnimationFrame lyric_frame = {0};
     if (now_playing_visible)
         lyric_frame = prepare_lyric_frame(ui, app, player);
@@ -3797,9 +4045,17 @@ UiPlayerTouchAction ui_player_touch(const AppState *app,
         return UI_PLAYER_TOUCH_NEXT;
     if (hit(MODE_X, MODE_Y, MODE_W, MODE_H, x, y))
         return UI_PLAYER_TOUCH_PLAY_MODE;
-    if (hit(ALBUM_X, ALBUM_Y, ALBUM_W, ALBUM_H, x, y) &&
-        (app->album_open || (current_song(app) && app->network_online)))
-        return UI_PLAYER_TOUCH_ALBUM;
+    if (now_playing_view_has_detail(app->now_playing_view) &&
+        hit(DETAIL_BACK_X, DETAIL_BACK_Y,
+            DETAIL_BACK_W, DETAIL_BACK_H, x, y))
+        return UI_PLAYER_TOUCH_DETAIL_BACK;
+    if (app->now_playing_view == NOW_PLAYING_DEFAULT &&
+        current_song(app) && app->network_online) {
+        if (hit(ALBUM_X, ALBUM_Y, ALBUM_W, ALBUM_H, x, y))
+            return UI_PLAYER_TOUCH_ALBUM;
+        if (hit(ARTIST_X, ARTIST_Y, ARTIST_W, ARTIST_H, x, y))
+            return UI_PLAYER_TOUCH_ARTIST;
+    }
     if (ui_player_seek_ratio(touch, seek_ratio))
         return UI_PLAYER_TOUCH_SEEK;
     if (x >= 195 && y >= 8 && y < QUEUE_LIST_Y)

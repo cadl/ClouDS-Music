@@ -63,6 +63,18 @@ int main(void) {
     assert(strcmp(i18n_text("专辑"), "Album") == 0);
     assert(strcmp(i18n_text("查看专辑"), "View album") == 0);
     assert(strcmp(i18n_text("专辑控制"), "Album controls") == 0);
+    assert(strcmp(i18n_text("艺人"), "Artist") == 0);
+    assert(strcmp(i18n_text("艺人控制"), "Artist controls") == 0);
+    assert(strcmp(i18n_text("Y 专辑"), "Y Albums") == 0);
+    assert(strcmp(i18n_text("Y 歌曲"), "Y Songs") == 0);
+    assert(strcmp(i18n_text("没有可查看的当前歌曲"),
+                  "No current song to view") == 0);
+    assert(i18n_snprintf(status, sizeof(status),
+                         "正在加载艺人专辑 · 第 %u 页", 2U) > 0);
+    assert(strcmp(status, "Loading artist albums · Page 2") == 0);
+    assert(i18n_snprintf(status, sizeof(status),
+                         "正在加载艺人歌曲 · 第 %u 页", 3U) > 0);
+    assert(strcmp(status, "Loading artist songs · Page 3") == 0);
     assert(strcmp(i18n_text("滚动"), "Scroll") == 0);
     assert(i18n_snprintf(status, sizeof(status),
                          "正在加载专辑歌曲 · 第 %u 页", 2U) > 0);
@@ -101,6 +113,14 @@ int main(void) {
                   "page by page") == 0);
     assert(strcmp(i18n_text("确认将推荐全部加入播放列表"),
                   "Confirm adding all recommendations to the queue") == 0);
+    assert(strcmp(i18n_text("将按页添加当前艺人的全部热门歌曲"),
+                  "All popular artist tracks will be added page by page") ==
+           0);
+    assert(strcmp(i18n_text("确认将艺人歌曲全部加入播放列表"),
+                  "Confirm adding all artist tracks to the queue") == 0);
+    assert(i18n_snprintf(status, sizeof(status),
+                         "正在全部加入艺人歌曲 · 第 %u 页", 4U) > 0);
+    assert(strcmp(status, "Adding artist tracks · Page 4") == 0);
     assert(i18n_snprintf(status, sizeof(status),
                          "歌曲数：%u 首", 30U) > 0);
     assert(strcmp(status, "Tracks: 30") == 0);

@@ -271,7 +271,8 @@ static void run_album_tracks(NetworkWorker *worker, const WorkerJob *job,
     result->album_id = album_id;
     i18n_snprintf(result->album_name, sizeof(result->album_name), "%s",
                   source_song.album);
-    bool refresh_index = !enqueue && job->offset == 0 && job->album_id <= 0;
+    bool refresh_index = !enqueue && job->offset == 0 &&
+                         (job->album_id <= 0 || job->refresh_index);
     if (refresh_index)
         worker_status(worker, "正在查询完整专辑歌曲列表");
     else worker_status(worker, enqueue ?
@@ -284,6 +285,62 @@ static void run_album_tracks(NetworkWorker *worker, const WorkerJob *job,
                              result->songs, NM3DS_ALBUM_PAGE,
                              &result->song_count, &result->has_more,
                              &result->album_track_total,
+                             error, sizeof(error)) != 0) {
+        finish_failure(worker, result, error);
+        return;
+    }
+    result->success = true;
+}
+
+static void run_song_artists(NetworkWorker *worker, const WorkerJob *job,
+                             WorkerResult *result) {
+    char error[192] = {0};
+    result->song_id = job->song.id;
+    if (job->song.id <= 0) {
+        finish_failure(worker, result, "没有可查看的当前歌曲");
+        return;
+    }
+    worker_status(worker, "正在查找歌曲艺人");
+    if (netease_song_artists(worker->client, job->song.id,
+                             result->artists, NM3DS_SONG_ARTISTS_MAX,
+                             &result->artist_count,
+                             error, sizeof(error)) != 0) {
+        finish_failure(worker, result, error);
+        return;
+    }
+    result->success = true;
+}
+
+static void run_artist_albums(NetworkWorker *worker, const WorkerJob *job,
+                              WorkerResult *result) {
+    char error[192] = {0};
+    result->artist_id = job->artist_id;
+    result->offset = job->offset;
+    worker_status(worker, "正在加载艺人专辑 · 第 %u 页",
+                  (unsigned int)(job->offset / NM3DS_ARTIST_PAGE + 1));
+    if (netease_artist_albums(worker->client, job->artist_id, job->offset,
+                              result->albums, NM3DS_ARTIST_PAGE,
+                              &result->album_count, &result->has_more,
+                              error, sizeof(error)) != 0) {
+        finish_failure(worker, result, error);
+        return;
+    }
+    result->success = true;
+}
+
+static void run_artist_songs(NetworkWorker *worker, const WorkerJob *job,
+                             WorkerResult *result) {
+    char error[192] = {0};
+    bool enqueue = job->kind == WORKER_JOB_ARTIST_SONG_ENQUEUE;
+    result->artist_id = job->artist_id;
+    result->offset = job->offset;
+    worker_status(worker, enqueue ?
+                  "正在全部加入艺人歌曲 · 第 %u 页" :
+                  "正在加载艺人歌曲 · 第 %u 页",
+                  (unsigned int)(job->offset / NM3DS_ARTIST_PAGE + 1));
+    if (netease_artist_songs(worker->client, job->artist_id, job->offset,
+                             result->songs, NM3DS_ARTIST_PAGE,
+                             &result->song_count, &result->has_more,
                              error, sizeof(error)) != 0) {
         finish_failure(worker, result, error);
         return;
@@ -849,6 +906,16 @@ static void run_job(NetworkWorker *worker, const WorkerJob *job,
         case WORKER_JOB_ALBUM_TRACKS:
         case WORKER_JOB_ALBUM_ENQUEUE:
             run_album_tracks(worker, job, result);
+            break;
+        case WORKER_JOB_SONG_ARTISTS:
+            run_song_artists(worker, job, result);
+            break;
+        case WORKER_JOB_ARTIST_ALBUMS:
+            run_artist_albums(worker, job, result);
+            break;
+        case WORKER_JOB_ARTIST_SONGS:
+        case WORKER_JOB_ARTIST_SONG_ENQUEUE:
+            run_artist_songs(worker, job, result);
             break;
         case WORKER_JOB_SEARCH: run_search(worker, job, result); break;
         case WORKER_JOB_PREPARE_SONG:

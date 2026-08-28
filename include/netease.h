@@ -56,6 +56,9 @@ int netease_song_detail(NeteaseClient *client, int64_t song_id,
 int netease_song_album_detail(NeteaseClient *client, int64_t song_id,
                               Song *song, int64_t *album_id,
                               char *error, size_t error_size);
+int netease_song_artists(NeteaseClient *client, int64_t song_id,
+                         NeteaseArtist *artists, size_t capacity,
+                         size_t *count, char *error, size_t error_size);
 int netease_discover(NeteaseClient *client, size_t offset,
                      Song *songs, size_t capacity, size_t *count,
                      bool *has_more, size_t *total_count,
@@ -85,6 +88,14 @@ int netease_album_tracks(NeteaseClient *client, int64_t album_id,
                          Song *songs, size_t capacity,
                          size_t *count, bool *has_more,
                          size_t *total_count,
+                         char *error, size_t error_size);
+int netease_artist_albums(NeteaseClient *client, int64_t artist_id,
+                          size_t offset, NeteaseAlbum *albums,
+                          size_t capacity, size_t *count, bool *has_more,
+                          char *error, size_t error_size);
+int netease_artist_songs(NeteaseClient *client, int64_t artist_id,
+                         size_t offset, Song *songs, size_t capacity,
+                         size_t *count, bool *has_more,
                          char *error, size_t error_size);
 int netease_lyrics(NeteaseClient *client, int64_t song_id,
                    LyricLine *lines, size_t capacity,

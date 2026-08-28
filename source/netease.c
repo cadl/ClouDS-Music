@@ -27,6 +27,7 @@
 #define JSON_TOKENS 8192
 #define RECOMMEND_SONG_TOKENS 1024
 #define ALBUM_SONG_TOKENS 1024
+#define ARTIST_ITEM_TOKENS 1024
 #define USER_PLAYLIST_TOKENS 2048
 #define DISCOVER_URL "https://music.163.com/api/personalized/newsong"
 #define EAPI_HEADER_CAPACITY (NETEASE_MUSIC_U_CAPACITY + 512U)
@@ -418,6 +419,33 @@ static void read_artists(const JsonDoc *doc, int song,
         snprintf(output, output_size, "%s", i18n_text("未知歌手"));
 }
 
+static void read_artist_refs(const JsonDoc *doc, int song,
+                             NeteaseArtist *output, size_t capacity,
+                             size_t *count) {
+    if (count) *count = 0;
+    if (!doc || song < 0 || !output || capacity == 0 || !count) return;
+    int artists = json_obj_get(doc, song, "artists");
+    if (artists < 0) artists = json_obj_get(doc, song, "ar");
+    if (artists < 0 || doc->tokens[artists].type != JSON_ARRAY) return;
+    int available = json_arr_size(doc, artists);
+    for (int i = 0; i < available && *count < capacity; i++) {
+        int item = json_arr_get(doc, artists, i);
+        NeteaseArtist artist;
+        memset(&artist, 0, sizeof(artist));
+        if (json_i64(doc, json_obj_get(doc, item, "id"), &artist.id) != 0 ||
+            artist.id <= 0)
+            continue;
+        bool duplicate = false;
+        for (size_t existing = 0; existing < *count; existing++)
+            if (output[existing].id == artist.id) duplicate = true;
+        if (duplicate) continue;
+        read_string(doc, item, "name", artist.name, sizeof(artist.name),
+                    "未知歌手");
+        (void)utf8_compose_hangul_nfc(artist.name);
+        output[(*count)++] = artist;
+    }
+}
+
 static int read_song_with_album_id(const JsonDoc *doc, int item, Song *song,
                                    int64_t *album_id) {
     if (!doc || item < 0 || !song) return -1;
@@ -539,6 +567,9 @@ static int read_recommendation_array(char *json, size_t offset,
 static int request_song_details(NeteaseClient *client, const int64_t *ids,
                                 size_t id_count, Song *songs,
                                 int64_t *album_ids,
+                                NeteaseArtist *artists,
+                                size_t artist_capacity,
+                                size_t *artist_count,
                                 size_t capacity, size_t *count,
                                 char *error, size_t error_size) {
     if (!client || !ids || id_count == 0 ||
@@ -547,6 +578,7 @@ static int request_song_details(NeteaseClient *client, const int64_t *ids,
         return -1;
     }
     *count = 0;
+    if (artist_count) *artist_count = 0;
     char escaped_ids[640];
     char plain_ids[256];
     size_t escaped_used = 0;
@@ -615,6 +647,11 @@ static int request_song_details(NeteaseClient *client, const int64_t *ids,
         if (read_song_with_album_id(&doc, item, &songs[*count],
                                     &album_id) == 0) {
             if (album_ids) album_ids[*count] = album_id;
+            if (artists && artist_count && *count == 0) {
+                int wrapped = json_obj_get(&doc, item, "song");
+                read_artist_refs(&doc, wrapped >= 0 ? wrapped : item,
+                                 artists, artist_capacity, artist_count);
+            }
             (*count)++;
         }
     }
@@ -638,7 +675,8 @@ int netease_song_detail(NeteaseClient *client, int64_t song_id,
         return -1;
     }
     size_t count = 0;
-    if (request_song_details(client, &song_id, 1, song, NULL, 1, &count,
+    if (request_song_details(client, &song_id, 1, song, NULL,
+                             NULL, 0, NULL, 1, &count,
                              error, error_size) != 0)
         return -1;
     if (count != 1 || song->id != song_id) {
@@ -659,12 +697,38 @@ int netease_song_album_detail(NeteaseClient *client, int64_t song_id,
     *album_id = 0;
     size_t count = 0;
     if (request_song_details(client, &song_id, 1, song, album_id,
-                             1, &count, error, error_size) != 0)
+                             NULL, 0, NULL, 1, &count,
+                             error, error_size) != 0)
         return -1;
     if (count != 1 || song->id != song_id || *album_id <= 0) {
         memset(song, 0, sizeof(*song));
         *album_id = 0;
         set_error(error, error_size, "歌曲的专辑信息不可用");
+        return -1;
+    }
+    return 0;
+}
+
+int netease_song_artists(NeteaseClient *client, int64_t song_id,
+                         NeteaseArtist *artists, size_t capacity,
+                         size_t *count, char *error, size_t error_size) {
+    if (!client || song_id <= 0 || !artists || capacity == 0 || !count) {
+        set_error(error, error_size, "歌曲艺人请求无效");
+        return -1;
+    }
+    *count = 0;
+    Song song;
+    size_t song_count = 0;
+    if (capacity > NM3DS_SONG_ARTISTS_MAX)
+        capacity = NM3DS_SONG_ARTISTS_MAX;
+    if (request_song_details(client, &song_id, 1, &song, NULL,
+                             artists, capacity, count, 1, &song_count,
+                             error, error_size) != 0)
+        return -1;
+    if (song_count != 1 || song.id != song_id || *count == 0) {
+        memset(artists, 0, capacity * sizeof(artists[0]));
+        *count = 0;
+        set_error(error, error_size, "歌曲的艺人信息不可用");
         return -1;
     }
     return 0;
@@ -1041,7 +1105,8 @@ int netease_playlist_tracks(NeteaseClient *client, int64_t playlist_id,
         return -1;
     }
 
-    return request_song_details(client, ids, id_count, songs, NULL, capacity,
+    return request_song_details(client, ids, id_count, songs, NULL,
+                                NULL, 0, NULL, capacity,
                                 count, error, error_size);
 }
 
@@ -1183,6 +1248,216 @@ int netease_album_tracks(NeteaseClient *client, int64_t album_id,
     }
     if (*count == 0) {
         set_error(error, error_size, "专辑本页没有歌曲");
+        return -1;
+    }
+    return 0;
+}
+
+typedef struct {
+    NeteaseAlbum *albums;
+    size_t capacity;
+    size_t visited;
+    size_t count;
+    bool has_more;
+} ArtistAlbumReader;
+
+static int read_artist_album_object(const JsonDoc *doc, void *userdata) {
+    ArtistAlbumReader *reader = (ArtistAlbumReader *)userdata;
+    if (reader->visited++ >= reader->capacity) {
+        reader->has_more = true;
+        return 1;
+    }
+    NeteaseAlbum album;
+    memset(&album, 0, sizeof(album));
+    if (json_i64(doc, json_obj_get(doc, 0, "id"), &album.id) != 0 ||
+        album.id <= 0)
+        return 0;
+    int64_t track_count = 0;
+    int count_token = json_obj_get(doc, 0, "size");
+    if (count_token < 0) count_token = json_obj_get(doc, 0, "trackCount");
+    if (json_i64(doc, count_token, &track_count) == 0 && track_count > 0)
+        album.track_count = track_count > UINT32_MAX ? UINT32_MAX :
+                                                       (uint32_t)track_count;
+    read_string(doc, 0, "name", album.name, sizeof(album.name),
+                "未命名专辑");
+    (void)utf8_compose_hangul_nfc(album.name);
+    reader->albums[reader->count++] = album;
+    return 0;
+}
+
+static int artist_list_error(char *json, int visit_result,
+                             const char *missing, const char *invalid,
+                             const char *too_large,
+                             char *error, size_t error_size) {
+    if (visit_result == JSON_VISIT_TOKENS_EXHAUSTED) {
+        set_error(error, error_size, "%s", too_large);
+        return -1;
+    }
+    if (visit_result == JSON_VISIT_NOT_FOUND) {
+        JsonToken error_tokens[64];
+        JsonDoc error_doc;
+        if (json_parse(&error_doc, json, error_tokens, 64) > 0)
+            response_error(&error_doc, error, error_size);
+        else set_error(error, error_size, "%s", missing);
+        return -1;
+    }
+    if (visit_result < 0) {
+        set_error(error, error_size, "%s", invalid);
+        return -1;
+    }
+    return 0;
+}
+
+int netease_artist_albums(NeteaseClient *client, int64_t artist_id,
+                          size_t offset, NeteaseAlbum *albums,
+                          size_t capacity, size_t *count, bool *has_more,
+                          char *error, size_t error_size) {
+    if (!client || artist_id <= 0 || !albums || capacity == 0 ||
+        capacity > NM3DS_ARTIST_PAGE || capacity == SIZE_MAX ||
+        !count || !has_more) {
+        set_error(error, error_size, "艺人专辑请求无效");
+        return -1;
+    }
+    *count = 0;
+    *has_more = false;
+    char route[96];
+    int route_length = snprintf(route, sizeof(route), "artist/albums/%lld",
+                                (long long)artist_id);
+    if (route_length < 0 || (size_t)route_length >= sizeof(route)) {
+        set_error(error, error_size, "艺人专辑请求过大");
+        return -1;
+    }
+    char payload[192];
+    int payload_length = snprintf(
+        payload, sizeof(payload),
+        "{\"limit\":%zu,\"offset\":%zu,\"total\":true,"
+        "\"csrf_token\":\"\"}", capacity + 1U, offset);
+    if (payload_length < 0 ||
+        (size_t)payload_length >= sizeof(payload)) {
+        set_error(error, error_size, "艺人专辑请求过大");
+        return -1;
+    }
+    char *json = NULL;
+    if (weapi_request(client, route, payload, &json,
+                      error, error_size) != 0)
+        return -1;
+    JsonToken *tokens = (JsonToken *)calloc(
+        ARTIST_ITEM_TOKENS, sizeof(JsonToken));
+    if (!tokens) {
+        free(json);
+        set_error(error, error_size, "内存不足");
+        return -1;
+    }
+    ArtistAlbumReader reader = {
+        .albums = albums,
+        .capacity = capacity,
+    };
+    int result = json_visit_array_objects(
+        json, "hotAlbums", tokens, ARTIST_ITEM_TOKENS,
+        read_artist_album_object, &reader);
+    free(tokens);
+    *count = reader.count;
+    *has_more = reader.has_more;
+    if (artist_list_error(json, result,
+                          "艺人专辑列表不可用",
+                          "艺人专辑列表的 JSON 无效",
+                          "艺人专辑项目的 JSON 过大",
+                          error, error_size) != 0) {
+        free(json);
+        return -1;
+    }
+    free(json);
+    if (*count == 0) {
+        set_error(error, error_size,
+                  offset ? "艺人本页没有更多专辑" :
+                           "这个艺人没有可显示的专辑");
+        return -1;
+    }
+    return 0;
+}
+
+typedef struct {
+    Song *songs;
+    size_t capacity;
+    size_t visited;
+    size_t count;
+    bool has_more;
+} ArtistSongReader;
+
+static int read_artist_song_object(const JsonDoc *doc, void *userdata) {
+    ArtistSongReader *reader = (ArtistSongReader *)userdata;
+    if (reader->visited++ >= reader->capacity) {
+        reader->has_more = true;
+        return 1;
+    }
+    Song song;
+    if (read_song(doc, 0, &song) == 0)
+        reader->songs[reader->count++] = song;
+    return 0;
+}
+
+int netease_artist_songs(NeteaseClient *client, int64_t artist_id,
+                         size_t offset, Song *songs, size_t capacity,
+                         size_t *count, bool *has_more,
+                         char *error, size_t error_size) {
+    if (!client || artist_id <= 0 || !songs || capacity == 0 ||
+        capacity > NM3DS_ARTIST_PAGE || capacity == SIZE_MAX ||
+        !count || !has_more) {
+        set_error(error, error_size, "艺人歌曲请求无效");
+        return -1;
+    }
+    *count = 0;
+    *has_more = false;
+    char header[EAPI_HEADER_CAPACITY];
+    if (append_header(client, header, sizeof(header)) < 0) {
+        set_error(error, error_size, "无法构建请求头");
+        return -1;
+    }
+    char payload[EAPI_PAYLOAD_CAPACITY];
+    int length = snprintf(
+        payload, sizeof(payload),
+        "{\"id\":\"%lld\",\"private_cloud\":\"true\","
+        "\"work_type\":1,\"order\":\"hot\",\"offset\":%zu,"
+        "\"limit\":%zu,%s}",
+        (long long)artist_id, offset, capacity + 1U, header);
+    if (length < 0 || (size_t)length >= sizeof(payload)) {
+        set_error(error, error_size, "艺人歌曲请求过大");
+        return -1;
+    }
+    char *json = NULL;
+    if (api_request(client, "/api/v1/artist/songs", "v1/artist/songs",
+                    payload, &json, error, error_size) != 0)
+        return -1;
+    JsonToken *tokens = (JsonToken *)calloc(
+        ARTIST_ITEM_TOKENS, sizeof(JsonToken));
+    if (!tokens) {
+        free(json);
+        set_error(error, error_size, "内存不足");
+        return -1;
+    }
+    ArtistSongReader reader = {
+        .songs = songs,
+        .capacity = capacity,
+    };
+    int result = json_visit_array_objects(
+        json, "songs", tokens, ARTIST_ITEM_TOKENS,
+        read_artist_song_object, &reader);
+    free(tokens);
+    *count = reader.count;
+    *has_more = reader.has_more;
+    if (artist_list_error(json, result,
+                          "艺人歌曲列表不可用",
+                          "艺人歌曲列表的 JSON 无效",
+                          "艺人歌曲项目的 JSON 过大",
+                          error, error_size) != 0) {
+        free(json);
+        return -1;
+    }
+    free(json);
+    if (*count == 0) {
+        set_error(error, error_size,
+                  offset ? "艺人本页没有更多歌曲" :
+                           "这个艺人没有可显示的歌曲");
         return -1;
     }
     return 0;

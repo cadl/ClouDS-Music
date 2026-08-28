@@ -340,6 +340,11 @@ static const char *worker_job_label(WorkerJobKind kind) {
         case WORKER_JOB_PLAYLIST_ENQUEUE: return "playlist_enqueue";
         case WORKER_JOB_ALBUM_TRACKS: return "album_tracks";
         case WORKER_JOB_ALBUM_ENQUEUE: return "album_enqueue";
+        case WORKER_JOB_SONG_ARTISTS: return "song_artists";
+        case WORKER_JOB_ARTIST_ALBUMS: return "artist_albums";
+        case WORKER_JOB_ARTIST_SONGS: return "artist_songs";
+        case WORKER_JOB_ARTIST_SONG_ENQUEUE:
+            return "artist_song_enqueue";
         case WORKER_JOB_SEARCH: return "search";
         case WORKER_JOB_PREPARE_SONG: return "prepare_song";
         case WORKER_JOB_SONG_EXTRAS: return "song_extras";
@@ -566,6 +571,10 @@ static bool worker_kind_uses_network(const WorkerResult *result) {
         case WORKER_JOB_PLAYLIST_ENQUEUE:
         case WORKER_JOB_ALBUM_TRACKS:
         case WORKER_JOB_ALBUM_ENQUEUE:
+        case WORKER_JOB_SONG_ARTISTS:
+        case WORKER_JOB_ARTIST_ALBUMS:
+        case WORKER_JOB_ARTIST_SONGS:
+        case WORKER_JOB_ARTIST_SONG_ENQUEUE:
         case WORKER_JOB_SEARCH:
         case WORKER_JOB_LOGIN_QR_START:
         case WORKER_JOB_LOGIN_QR_CHECK:
@@ -856,7 +865,9 @@ static void move_recommendation_source(AppState *app, int dx) {
 }
 
 static void toggle_screen_focus(AppState *app) {
-    if (!app || (app->tab == TAB_NOW_PLAYING && !app->album_open)) return;
+    if (!app || (app->tab == TAB_NOW_PLAYING &&
+                 !now_playing_view_has_detail(app->now_playing_view)))
+        return;
     if (app->focus == APP_FOCUS_PLAYLIST) {
         app->focus = APP_FOCUS_CONTENT;
         i18n_snprintf(app->status, sizeof(app->status),
@@ -1084,11 +1095,13 @@ static void load_cloud_tracks(AppState *app, NetworkWorker *worker,
     else show_error(app, "无法启动云盘任务");
 }
 
+static bool worker_job_is_now_playing_detail(WorkerJobKind kind);
+
 static void reset_album(AppState *app) {
     if (!app) return;
-    app->album_open = false;
     app->album_id = 0;
     app->album_source_song_id = 0;
+    app->album_return_view = NOW_PLAYING_DEFAULT;
     app->album_name[0] = '\0';
     app->album_track_count = 0;
     app->album_track_selected = 0;
@@ -1098,11 +1111,67 @@ static void reset_album(AppState *app) {
     app->album_track_has_more = false;
 }
 
-static void close_album(AppState *app) {
-    if (!app || !app->album_open) return;
+static void reset_artist(AppState *app) {
+    if (!app) return;
+    app->artist_source_song_id = 0;
+    app->artist_choice_count = 0;
+    app->artist_choice_selected = 0;
+    app->artist_id = 0;
+    app->artist_name[0] = '\0';
+    app->artist_album_count = 0;
+    app->artist_album_selected = 0;
+    app->artist_album_pending_selected = 0;
+    app->artist_album_offset = 0;
+    app->artist_album_has_more = false;
+    app->artist_song_count = 0;
+    app->artist_song_selected = 0;
+    app->artist_song_pending_selected = 0;
+    app->artist_song_offset = 0;
+    app->artist_song_has_more = false;
+}
+
+static void reset_now_playing_detail(AppState *app) {
+    if (!app) return;
     reset_album(app);
+    reset_artist(app);
+    app->now_playing_view = NOW_PLAYING_DEFAULT;
+}
+
+static void close_album(AppState *app) {
+    if (!app || app->now_playing_view != NOW_PLAYING_ALBUM) return;
+    NowPlayingView return_view = app->album_return_view;
+    reset_album(app);
+    if (now_playing_view_is_artist(return_view) && app->artist_id > 0) {
+        app->now_playing_view = return_view;
+        app->focus = APP_FOCUS_CONTENT;
+        i18n_snprintf(app->status, sizeof(app->status), "已返回艺人页面");
+    } else {
+        app->now_playing_view = NOW_PLAYING_DEFAULT;
+        app->focus = APP_FOCUS_PLAYLIST;
+        i18n_snprintf(app->status, sizeof(app->status), "已返回正在播放");
+    }
+}
+
+static void close_artist(AppState *app) {
+    if (!app || !now_playing_view_is_artist(app->now_playing_view)) return;
+    reset_artist(app);
+    reset_album(app);
+    app->now_playing_view = NOW_PLAYING_DEFAULT;
     app->focus = APP_FOCUS_PLAYLIST;
     i18n_snprintf(app->status, sizeof(app->status), "已返回正在播放");
+}
+
+static void close_now_playing_detail(AppState *app, NetworkWorker *worker) {
+    if (!app || !now_playing_view_has_detail(app->now_playing_view)) return;
+    if (worker) {
+        WorkerSnapshot snapshot;
+        network_worker_snapshot(worker, &snapshot);
+        if (snapshot.busy && worker_job_is_now_playing_detail(snapshot.kind))
+            network_worker_cancel(worker);
+    }
+    if (app->now_playing_view == NOW_PLAYING_ALBUM)
+        close_album(app);
+    else close_artist(app);
 }
 
 static bool submit_album_page(AppState *app, NetworkWorker *worker,
@@ -1125,7 +1194,7 @@ static bool submit_album_page(AppState *app, NetworkWorker *worker,
 
 static void move_album_page(AppState *app, NetworkWorker *worker,
                             int direction) {
-    if (!app || !worker || !app->album_open ||
+    if (!app || !worker || app->now_playing_view != NOW_PLAYING_ALBUM ||
         app->focus != APP_FOCUS_CONTENT || network_task_busy(worker))
         return;
     size_t target_offset;
@@ -1142,7 +1211,7 @@ static void move_album_page(AppState *app, NetworkWorker *worker,
 
 static void move_album_selection(AppState *app, NetworkWorker *worker,
                                  int delta) {
-    if (!app || !worker || !app->album_open ||
+    if (!app || !worker || app->now_playing_view != NOW_PLAYING_ALBUM ||
         app->focus != APP_FOCUS_CONTENT || app->album_track_count == 0)
         return;
     int next = app->album_track_selected + delta;
@@ -1155,7 +1224,7 @@ static void move_album_selection(AppState *app, NetworkWorker *worker,
 
 static void open_current_album(AppState *app, NetworkWorker *worker) {
     if (!app || !worker) return;
-    if (app->album_open) {
+    if (app->now_playing_view == NOW_PLAYING_ALBUM) {
         WorkerSnapshot snapshot;
         network_worker_snapshot(worker, &snapshot);
         if (snapshot.busy && snapshot.kind == WORKER_JOB_ALBUM_TRACKS)
@@ -1180,8 +1249,8 @@ static void open_current_album(AppState *app, NetworkWorker *worker) {
         return;
     }
     Song song = app->queue[app->current_queue];
-    reset_album(app);
-    app->album_open = true;
+    reset_now_playing_detail(app);
+    app->now_playing_view = NOW_PLAYING_ALBUM;
     app->album_source_song_id = song.id;
     i18n_snprintf(app->album_name, sizeof(app->album_name), "%s",
                   song.album);
@@ -1197,23 +1266,245 @@ static void open_current_album(AppState *app, NetworkWorker *worker) {
         i18n_snprintf(app->status, sizeof(app->status),
                       "正在查询完整专辑歌曲列表");
     } else {
-        reset_album(app);
+        reset_now_playing_detail(app);
         app->focus = APP_FOCUS_PLAYLIST;
         show_error(app, "无法启动专辑任务");
     }
 }
 
+static bool submit_artist_page(AppState *app, NetworkWorker *worker,
+                               NowPlayingView view, size_t offset,
+                               int selected) {
+    if (!app || !worker || app->artist_id <= 0 ||
+        (view != NOW_PLAYING_ARTIST_ALBUMS &&
+         view != NOW_PLAYING_ARTIST_SONGS))
+        return false;
+    WorkerJob job;
+    memset(&job, 0, sizeof(job));
+    job.kind = view == NOW_PLAYING_ARTIST_ALBUMS ?
+               WORKER_JOB_ARTIST_ALBUMS : WORKER_JOB_ARTIST_SONGS;
+    job.artist_id = app->artist_id;
+    job.offset = offset;
+    if (!network_worker_submit(worker, &job)) return false;
+    app->now_playing_view = view;
+    app->mode = APP_LOADING_ARTIST;
+    if (view == NOW_PLAYING_ARTIST_ALBUMS) {
+        app->artist_album_count = 0;
+        app->artist_album_pending_selected = selected;
+        i18n_snprintf(app->status, sizeof(app->status),
+                      "正在加载艺人专辑 · 第 %u 页",
+                      (unsigned int)(offset / NM3DS_ARTIST_PAGE + 1));
+    } else {
+        app->artist_song_count = 0;
+        app->artist_song_pending_selected = selected;
+        i18n_snprintf(app->status, sizeof(app->status),
+                      "正在加载艺人歌曲 · 第 %u 页",
+                      (unsigned int)(offset / NM3DS_ARTIST_PAGE + 1));
+    }
+    return true;
+}
+
+static void choose_artist(AppState *app, NetworkWorker *worker) {
+    if (!app || !worker ||
+        app->now_playing_view != NOW_PLAYING_ARTIST_PICKER ||
+        app->artist_choice_count == 0 ||
+        app->artist_choice_selected < 0 ||
+        (size_t)app->artist_choice_selected >= app->artist_choice_count)
+        return;
+    const NeteaseArtist *artist =
+        &app->artist_choices[app->artist_choice_selected];
+    app->artist_id = artist->id;
+    i18n_snprintf(app->artist_name, sizeof(app->artist_name), "%s",
+                  artist->name);
+    app->artist_album_count = 0;
+    app->artist_album_offset = 0;
+    app->artist_album_has_more = false;
+    app->artist_song_count = 0;
+    app->artist_song_offset = 0;
+    app->artist_song_has_more = false;
+    if (!submit_artist_page(app, worker, NOW_PLAYING_ARTIST_ALBUMS, 0, 0))
+        show_error(app, "无法启动艺人任务");
+}
+
+static void open_current_artist(AppState *app, NetworkWorker *worker) {
+    if (!app || !worker) return;
+    if (now_playing_view_is_artist(app->now_playing_view)) {
+        WorkerSnapshot snapshot;
+        network_worker_snapshot(worker, &snapshot);
+        if (snapshot.busy &&
+            (snapshot.kind == WORKER_JOB_SONG_ARTISTS ||
+             snapshot.kind == WORKER_JOB_ARTIST_ALBUMS ||
+             snapshot.kind == WORKER_JOB_ARTIST_SONGS))
+            network_worker_cancel(worker);
+        close_artist(app);
+        return;
+    }
+    if (app->current_queue < 0 ||
+        app->current_queue >= (int)app->queue_count) {
+        i18n_snprintf(app->status, sizeof(app->status),
+                      "没有可查看的当前歌曲");
+        return;
+    }
+    if (!app->network_online) {
+        i18n_snprintf(app->status, sizeof(app->status),
+                      "Wi-Fi 未连接，无法查看艺人");
+        return;
+    }
+    if (network_task_busy(worker)) {
+        i18n_snprintf(app->status, sizeof(app->status),
+                      "当前任务尚未完成");
+        return;
+    }
+    Song song = app->queue[app->current_queue];
+    reset_now_playing_detail(app);
+    app->now_playing_view = NOW_PLAYING_ARTIST_PICKER;
+    app->artist_source_song_id = song.id;
+    app->tab = TAB_NOW_PLAYING;
+    app->focus = APP_FOCUS_CONTENT;
+    app->account_open = false;
+    WorkerJob job;
+    memset(&job, 0, sizeof(job));
+    job.kind = WORKER_JOB_SONG_ARTISTS;
+    job.song = song;
+    if (network_worker_submit(worker, &job)) {
+        app->mode = APP_LOADING_ARTIST;
+        i18n_snprintf(app->status, sizeof(app->status),
+                      "正在查找歌曲艺人");
+    } else {
+        reset_now_playing_detail(app);
+        app->focus = APP_FOCUS_PLAYLIST;
+        show_error(app, "无法启动艺人任务");
+    }
+}
+
+static void open_artist_album(AppState *app, NetworkWorker *worker) {
+    if (!app || !worker ||
+        app->now_playing_view != NOW_PLAYING_ARTIST_ALBUMS ||
+        app->artist_album_count == 0 || app->artist_album_selected < 0 ||
+        (size_t)app->artist_album_selected >= app->artist_album_count ||
+        network_task_busy(worker))
+        return;
+    const NeteaseAlbum album =
+        app->artist_albums[app->artist_album_selected];
+    reset_album(app);
+    app->now_playing_view = NOW_PLAYING_ALBUM;
+    app->album_return_view = NOW_PLAYING_ARTIST_ALBUMS;
+    app->album_id = album.id;
+    i18n_snprintf(app->album_name, sizeof(app->album_name), "%s",
+                  album.name);
+    WorkerJob job;
+    memset(&job, 0, sizeof(job));
+    job.kind = WORKER_JOB_ALBUM_TRACKS;
+    job.album_id = album.id;
+    job.refresh_index = true;
+    i18n_snprintf(job.song.album, sizeof(job.song.album), "%s", album.name);
+    if (network_worker_submit(worker, &job)) {
+        app->mode = APP_LOADING_ALBUM;
+        i18n_snprintf(app->status, sizeof(app->status),
+                      "正在查询完整专辑歌曲列表");
+    } else {
+        app->now_playing_view = NOW_PLAYING_ARTIST_ALBUMS;
+        reset_album(app);
+        show_error(app, "无法启动专辑任务");
+    }
+}
+
+static void move_artist_page(AppState *app, NetworkWorker *worker,
+                             int direction) {
+    if (!app || !worker || !now_playing_view_is_artist(
+            app->now_playing_view) ||
+        app->now_playing_view == NOW_PLAYING_ARTIST_PICKER ||
+        app->focus != APP_FOCUS_CONTENT || network_task_busy(worker))
+        return;
+    size_t offset = app->now_playing_view == NOW_PLAYING_ARTIST_ALBUMS ?
+                    app->artist_album_offset : app->artist_song_offset;
+    bool has_more = app->now_playing_view == NOW_PLAYING_ARTIST_ALBUMS ?
+                    app->artist_album_has_more : app->artist_song_has_more;
+    size_t target_offset;
+    int target_selected;
+    if (!playback_album_page_target(offset, has_more, direction,
+                                    &target_offset, &target_selected))
+        return;
+    if (!submit_artist_page(app, worker, app->now_playing_view,
+                            target_offset, target_selected))
+        show_error(app, direction > 0 ?
+                   "无法加载下一页艺人内容" :
+                   "无法加载上一页艺人内容");
+}
+
+static void move_artist_selection(AppState *app, NetworkWorker *worker,
+                                  int delta) {
+    if (!app || !worker || !now_playing_view_is_artist(
+            app->now_playing_view) || app->focus != APP_FOCUS_CONTENT)
+        return;
+    if (app->now_playing_view == NOW_PLAYING_ARTIST_PICKER) {
+        int next = app->artist_choice_selected + delta;
+        if (next >= 0 && next < (int)app->artist_choice_count)
+            app->artist_choice_selected = next;
+        return;
+    }
+    int *selected = app->now_playing_view == NOW_PLAYING_ARTIST_ALBUMS ?
+                    &app->artist_album_selected : &app->artist_song_selected;
+    size_t count = app->now_playing_view == NOW_PLAYING_ARTIST_ALBUMS ?
+                   app->artist_album_count : app->artist_song_count;
+    int next = *selected + delta;
+    if (next >= 0 && next < (int)count) {
+        *selected = next;
+        return;
+    }
+    move_artist_page(app, worker, delta);
+}
+
+static void toggle_artist_list(AppState *app, NetworkWorker *worker) {
+    if (!app || !worker ||
+        (app->now_playing_view != NOW_PLAYING_ARTIST_ALBUMS &&
+         app->now_playing_view != NOW_PLAYING_ARTIST_SONGS) ||
+        network_task_busy(worker))
+        return;
+    NowPlayingView target =
+        app->now_playing_view == NOW_PLAYING_ARTIST_ALBUMS ?
+        NOW_PLAYING_ARTIST_SONGS : NOW_PLAYING_ARTIST_ALBUMS;
+    size_t count = target == NOW_PLAYING_ARTIST_ALBUMS ?
+                   app->artist_album_count : app->artist_song_count;
+    if (count > 0) {
+        app->now_playing_view = target;
+        i18n_snprintf(app->status, sizeof(app->status), "%s",
+                      i18n_text(target == NOW_PLAYING_ARTIST_ALBUMS ?
+                                "已切换到艺人专辑" :
+                                "已切换到艺人歌曲"));
+        return;
+    }
+    if (!app->network_online) {
+        i18n_snprintf(app->status, sizeof(app->status),
+                      "Wi-Fi 未连接，无法加载艺人内容");
+        return;
+    }
+    size_t offset = target == NOW_PLAYING_ARTIST_ALBUMS ?
+                    app->artist_album_offset : app->artist_song_offset;
+    if (!submit_artist_page(app, worker, target, offset, 0))
+        show_error(app, "无法启动艺人任务");
+}
+
 static bool worker_job_is_bulk_enqueue(WorkerJobKind kind) {
     return kind == WORKER_JOB_PLAYLIST_ENQUEUE ||
            kind == WORKER_JOB_RECOMMENDATION_ENQUEUE ||
-           kind == WORKER_JOB_ALBUM_ENQUEUE;
+           kind == WORKER_JOB_ALBUM_ENQUEUE ||
+           kind == WORKER_JOB_ARTIST_SONG_ENQUEUE;
+}
+
+static bool worker_job_is_now_playing_detail(WorkerJobKind kind) {
+    return kind == WORKER_JOB_ALBUM_TRACKS ||
+           kind == WORKER_JOB_SONG_ARTISTS ||
+           kind == WORKER_JOB_ARTIST_ALBUMS ||
+           kind == WORKER_JOB_ARTIST_SONGS;
 }
 
 static size_t bulk_enqueue_page_size(BulkEnqueueKind kind) {
     if (kind == BULK_ENQUEUE_RECOMMENDATIONS)
         return NM3DS_RECOMMEND_RESULTS;
-    return kind == BULK_ENQUEUE_ALBUM ? NM3DS_ALBUM_PAGE :
-                                       NM3DS_LIBRARY_BATCH_PAGE;
+    if (kind == BULK_ENQUEUE_ALBUM) return NM3DS_ALBUM_PAGE;
+    return kind == BULK_ENQUEUE_ARTIST_SONGS ? NM3DS_ARTIST_PAGE :
+                                              NM3DS_LIBRARY_BATCH_PAGE;
 }
 
 static bool submit_bulk_enqueue_page(AppState *app,
@@ -1237,6 +1528,10 @@ static bool submit_bulk_enqueue_page(AppState *app,
         if (app->album_id <= 0) return false;
         job.kind = WORKER_JOB_ALBUM_ENQUEUE;
         job.album_id = app->album_id;
+    } else if (app->bulk_enqueue_kind == BULK_ENQUEUE_ARTIST_SONGS) {
+        if (app->artist_id <= 0) return false;
+        job.kind = WORKER_JOB_ARTIST_SONG_ENQUEUE;
+        job.artist_id = app->artist_id;
     } else {
         return false;
     }
@@ -1308,9 +1603,15 @@ static void begin_recommendation_enqueue_prompt(AppState *app,
 
 static void begin_album_enqueue_prompt(AppState *app,
                                        NetworkWorker *worker) {
-    if (!app || !worker || !app->network_online || !app->album_open ||
+    if (!app || !worker ||
+        app->now_playing_view != NOW_PLAYING_ALBUM ||
         app->album_id <= 0 || app->album_track_count == 0)
         return;
+    if (!app->network_online) {
+        i18n_snprintf(app->status, sizeof(app->status),
+                      "Wi-Fi 未连接，无法加入新歌曲");
+        return;
+    }
     if (app->bulk_enqueue_active) {
         i18n_snprintf(app->status, sizeof(app->status),
                       "正在全部加入播放列表");
@@ -1330,6 +1631,38 @@ static void begin_album_enqueue_prompt(AppState *app,
     app->bulk_enqueue_confirm = true;
     i18n_snprintf(app->status, sizeof(app->status),
                   "确认将专辑全部加入播放列表");
+}
+
+static void begin_artist_song_enqueue_prompt(AppState *app,
+                                             NetworkWorker *worker) {
+    if (!app || !worker ||
+        app->now_playing_view != NOW_PLAYING_ARTIST_SONGS ||
+        app->artist_id <= 0 || app->artist_song_count == 0)
+        return;
+    if (!app->network_online) {
+        i18n_snprintf(app->status, sizeof(app->status),
+                      "Wi-Fi 未连接，无法加入新歌曲");
+        return;
+    }
+    if (app->bulk_enqueue_active) {
+        i18n_snprintf(app->status, sizeof(app->status),
+                      "正在全部加入播放列表");
+        return;
+    }
+    if (network_task_busy(worker)) {
+        i18n_snprintf(app->status, sizeof(app->status),
+                      "当前任务尚未完成");
+        return;
+    }
+    if (app->queue_count >= NM3DS_MAX_QUEUE) {
+        i18n_snprintf(app->status, sizeof(app->status),
+                      "播放列表已满，无法加入更多歌曲");
+        return;
+    }
+    app->bulk_enqueue_kind = BULK_ENQUEUE_ARTIST_SONGS;
+    app->bulk_enqueue_confirm = true;
+    i18n_snprintf(app->status, sizeof(app->status),
+                  "确认将艺人歌曲全部加入播放列表");
 }
 
 static void finish_bulk_enqueue_prompt(AppState *app,
@@ -1558,10 +1891,15 @@ static void begin_search_input(AppState *app, Ui *ui, Player *player) {
 }
 
 static const Song *selected_song(const AppState *app) {
-    if (app->album_open && app->album_track_count > 0 &&
+    if (app->now_playing_view == NOW_PLAYING_ALBUM &&
+        app->album_track_count > 0 &&
         app->album_track_selected >= 0 &&
         (size_t)app->album_track_selected < app->album_track_count)
         return &app->album_tracks[app->album_track_selected];
+    if (app->now_playing_view == NOW_PLAYING_ARTIST_SONGS &&
+        app->artist_song_count > 0 && app->artist_song_selected >= 0 &&
+        (size_t)app->artist_song_selected < app->artist_song_count)
+        return &app->artist_songs[app->artist_song_selected];
     if (app->tab == TAB_DISCOVER) {
         if (app->discover_section == DISCOVER_LIBRARY &&
             app->library_view == LIBRARY_TRACKS &&
@@ -1592,14 +1930,15 @@ static void change_tab(AppState *app, NetworkWorker *worker,
         app->cache_limit_confirm_until = 0;
         app->clear_cache_confirm_until = 0;
     }
-    if (app->album_open) {
+    if (now_playing_view_has_detail(app->now_playing_view)) {
         if (worker) {
             WorkerSnapshot snapshot;
             network_worker_snapshot(worker, &snapshot);
-            if (snapshot.busy && snapshot.kind == WORKER_JOB_ALBUM_TRACKS)
+            if (snapshot.busy &&
+                worker_job_is_now_playing_detail(snapshot.kind))
                 network_worker_cancel(worker);
         }
-        reset_album(app);
+        reset_now_playing_detail(app);
     }
     int tab = ((int)app->tab + delta + TAB_COUNT) % TAB_COUNT;
     app->tab = (AppTab)tab;
@@ -1656,6 +1995,12 @@ static void handle_player_touch(AppState *app, PlaylistStore *store,
         case UI_PLAYER_TOUCH_ALBUM:
             open_current_album(app, worker);
             break;
+        case UI_PLAYER_TOUCH_ARTIST:
+            open_current_artist(app, worker);
+            break;
+        case UI_PLAYER_TOUCH_DETAIL_BACK:
+            close_now_playing_detail(app, worker);
+            break;
         case UI_PLAYER_TOUCH_SEEK:
             if (player_can_seek(player)) {
                 app->seek_dragging = true;
@@ -1710,7 +2055,8 @@ static int64_t current_song_id(const AppState *app) {
 }
 
 static void validate_open_album_song(AppState *app) {
-    if (!app || !app->album_open || app->current_queue < 0 ||
+    if (!app || app->now_playing_view != NOW_PLAYING_ALBUM ||
+        app->album_source_song_id <= 0 || app->current_queue < 0 ||
         app->current_queue >= (int)app->queue_count)
         return;
     if (app->bulk_enqueue_kind == BULK_ENQUEUE_ALBUM &&
@@ -1721,7 +2067,7 @@ static void validate_open_album_song(AppState *app) {
         (app->album_name[0] && song->album[0] &&
          strcmp(song->album, app->album_name) == 0))
         return;
-    reset_album(app);
+    reset_now_playing_detail(app);
     app->focus = APP_FOCUS_PLAYLIST;
     i18n_snprintf(app->status, sizeof(app->status),
                   "当前歌曲已切换，专辑页面已关闭");
@@ -2170,11 +2516,13 @@ static void apply_worker_result(AppState *app, PlaylistStore *store,
             app->extras_song_id = -1;
             return;
         }
-        if (result->kind == WORKER_JOB_ALBUM_TRACKS) {
+        if (worker_job_is_now_playing_detail(result->kind)) {
             app->mode = player_is_active(player) ? APP_PLAYING : APP_IDLE;
-            if (app->album_open)
-                i18n_snprintf(app->status, sizeof(app->status),
-                              "已取消加载专辑");
+            if (now_playing_view_has_detail(app->now_playing_view))
+                i18n_snprintf(
+                    app->status, sizeof(app->status), "%s",
+                    i18n_text(result->kind == WORKER_JOB_ALBUM_TRACKS ?
+                              "已取消加载专辑" : "已取消加载艺人"));
             return;
         }
         app->pending_queue = -1;
@@ -2204,15 +2552,16 @@ static void apply_worker_result(AppState *app, PlaylistStore *store,
                 app->extras_cached_song_id = -1;
             return;
         }
-        if (result->kind == WORKER_JOB_ALBUM_TRACKS) {
-            if (!app->album_open) {
+        if (worker_job_is_now_playing_detail(result->kind)) {
+            if (!now_playing_view_has_detail(app->now_playing_view)) {
                 app->mode = player_is_active(player) ? APP_PLAYING : APP_IDLE;
                 return;
             }
             app->mode = APP_ERROR;
             i18n_snprintf(app->status, sizeof(app->status), "%s",
                           result->error[0] ? result->error :
-                                             i18n_text("专辑加载失败"));
+                          i18n_text(result->kind == WORKER_JOB_ALBUM_TRACKS ?
+                                    "专辑加载失败" : "艺人加载失败"));
             return;
         }
         app->pending_queue = -1;
@@ -2360,7 +2709,8 @@ static void apply_worker_result(AppState *app, PlaylistStore *store,
                      (unsigned int)(result->offset / NM3DS_LIBRARY_PAGE + 1));
             break;
         case WORKER_JOB_ALBUM_TRACKS: {
-            if (!app->album_open || result->album_id <= 0 ||
+            if (app->now_playing_view != NOW_PLAYING_ALBUM ||
+                result->album_id <= 0 ||
                 (app->album_id > 0 && result->album_id != app->album_id) ||
                 (app->album_id <= 0 &&
                  result->song_id != app->album_source_song_id)) {
@@ -2390,13 +2740,77 @@ static void apply_worker_result(AppState *app, PlaylistStore *store,
                           (unsigned int)result->album_track_total);
             break;
         }
+        case WORKER_JOB_SONG_ARTISTS:
+            if (app->now_playing_view != NOW_PLAYING_ARTIST_PICKER ||
+                result->song_id != app->artist_source_song_id ||
+                result->artist_count == 0)
+                break;
+            memcpy(app->artist_choices, result->artists,
+                   result->artist_count * sizeof(result->artists[0]));
+            app->artist_choice_count = result->artist_count;
+            app->artist_choice_selected = 0;
+            app->mode = player_is_active(player) ? APP_PLAYING : APP_IDLE;
+            if (result->artist_count == 1) {
+                choose_artist(app, worker);
+            } else {
+                i18n_snprintf(app->status, sizeof(app->status),
+                              "请选择要查看的艺人");
+            }
+            break;
+        case WORKER_JOB_ARTIST_ALBUMS: {
+            if (app->now_playing_view != NOW_PLAYING_ARTIST_ALBUMS ||
+                result->artist_id <= 0 ||
+                result->artist_id != app->artist_id)
+                break;
+            memcpy(app->artist_albums, result->albums,
+                   result->album_count * sizeof(result->albums[0]));
+            app->artist_album_count = result->album_count;
+            int selected = app->artist_album_pending_selected;
+            if (selected < 0) selected = (int)result->album_count - 1;
+            if (selected < 0 || selected >= (int)result->album_count)
+                selected = 0;
+            app->artist_album_selected = selected;
+            app->artist_album_offset = result->offset;
+            app->artist_album_has_more = result->has_more;
+            app->mode = player_is_active(player) ? APP_PLAYING : APP_IDLE;
+            i18n_snprintf(app->status, sizeof(app->status),
+                          "已加载艺人专辑 · 第 %u 页",
+                          (unsigned int)(result->offset /
+                                         NM3DS_ARTIST_PAGE + 1));
+            break;
+        }
+        case WORKER_JOB_ARTIST_SONGS: {
+            if (app->now_playing_view != NOW_PLAYING_ARTIST_SONGS ||
+                result->artist_id <= 0 ||
+                result->artist_id != app->artist_id)
+                break;
+            memcpy(app->artist_songs, result->songs,
+                   result->song_count * sizeof(result->songs[0]));
+            app->artist_song_count = result->song_count;
+            int selected = app->artist_song_pending_selected;
+            if (selected < 0) selected = (int)result->song_count - 1;
+            if (selected < 0 || selected >= (int)result->song_count)
+                selected = 0;
+            app->artist_song_selected = selected;
+            app->artist_song_offset = result->offset;
+            app->artist_song_has_more = result->has_more;
+            app->mode = player_is_active(player) ? APP_PLAYING : APP_IDLE;
+            i18n_snprintf(app->status, sizeof(app->status),
+                          "已加载艺人歌曲 · 第 %u 页",
+                          (unsigned int)(result->offset /
+                                         NM3DS_ARTIST_PAGE + 1));
+            break;
+        }
         case WORKER_JOB_PLAYLIST_ENQUEUE:
         case WORKER_JOB_RECOMMENDATION_ENQUEUE:
-        case WORKER_JOB_ALBUM_ENQUEUE: {
+        case WORKER_JOB_ALBUM_ENQUEUE:
+        case WORKER_JOB_ARTIST_SONG_ENQUEUE: {
             BulkEnqueueKind kind = app->bulk_enqueue_kind;
             bool playlist_result =
                 result->kind == WORKER_JOB_PLAYLIST_ENQUEUE;
             bool album_result = result->kind == WORKER_JOB_ALBUM_ENQUEUE;
+            bool artist_result =
+                result->kind == WORKER_JOB_ARTIST_SONG_ENQUEUE;
             if (!app->bulk_enqueue_active ||
                 (playlist_result &&
                  (kind != BULK_ENQUEUE_LIBRARY ||
@@ -2404,7 +2818,10 @@ static void apply_worker_result(AppState *app, PlaylistStore *store,
                 (album_result &&
                  (kind != BULK_ENQUEUE_ALBUM ||
                   result->album_id != app->album_id)) ||
-                (!playlist_result && !album_result &&
+                (artist_result &&
+                 (kind != BULK_ENQUEUE_ARTIST_SONGS ||
+                  result->artist_id != app->artist_id)) ||
+                (!playlist_result && !album_result && !artist_result &&
                  (kind != BULK_ENQUEUE_RECOMMENDATIONS ||
                   result->recommendation_source !=
                       app->bulk_enqueue_recommendation_source)))
@@ -3010,6 +3427,10 @@ static void update_worker(AppState *app, PlaylistStore *store,
             app->mode = APP_LOADING_LIBRARY_TRACKS;
         else if (snapshot.kind == WORKER_JOB_ALBUM_TRACKS)
             app->mode = APP_LOADING_ALBUM;
+        else if (snapshot.kind == WORKER_JOB_SONG_ARTISTS ||
+                 snapshot.kind == WORKER_JOB_ARTIST_ALBUMS ||
+                 snapshot.kind == WORKER_JOB_ARTIST_SONGS)
+            app->mode = APP_LOADING_ARTIST;
         else if (worker_job_is_bulk_enqueue(snapshot.kind))
             app->mode = APP_BULK_ENQUEUE;
         else if (snapshot.kind == WORKER_JOB_SEARCH)
@@ -3530,7 +3951,7 @@ int main(void) {
         } else {
             if ((down & KEY_Y) && !(down & KEY_X) &&
                 app.tab == TAB_NOW_PLAYING &&
-                !app.album_open &&
+                app.now_playing_view == NOW_PLAYING_DEFAULT &&
                 immersive_lyrics_available(&app)) {
                 char font_error[192];
                 if (ui_prepare_immersive_font(
@@ -3598,13 +4019,22 @@ int main(void) {
                         cancelled = true;
                     }
                 }
-                if (!cancelled && app.album_open &&
+                if (!cancelled &&
+                    now_playing_view_has_detail(app.now_playing_view) &&
                     app.focus == APP_FOCUS_PLAYLIST) {
                     app.focus = APP_FOCUS_CONTENT;
-                    i18n_snprintf(app.status, sizeof(app.status),
-                                  "已切换到专辑列表");
-                } else if (!cancelled && app.album_open) {
+                    i18n_snprintf(
+                        app.status, sizeof(app.status), "%s",
+                        i18n_text(app.now_playing_view == NOW_PLAYING_ALBUM ?
+                                  "已切换到专辑列表" :
+                                  "已切换到艺人页面"));
+                } else if (!cancelled &&
+                           app.now_playing_view == NOW_PLAYING_ALBUM) {
                     close_album(&app);
+                } else if (!cancelled &&
+                           now_playing_view_is_artist(
+                               app.now_playing_view)) {
+                    close_artist(&app);
                 } else if (!cancelled && app.focus == APP_FOCUS_PLAYLIST &&
                     app.tab != TAB_NOW_PLAYING) {
                     app.focus = APP_FOCUS_CONTENT;
@@ -3656,8 +4086,13 @@ int main(void) {
                 }
             }
             if ((repeat & KEY_UP) != 0) {
-                if (app.album_open && app.focus == APP_FOCUS_CONTENT) {
+                if (app.now_playing_view == NOW_PLAYING_ALBUM &&
+                    app.focus == APP_FOCUS_CONTENT) {
                     move_album_selection(&app, worker, -1);
+                } else if (now_playing_view_is_artist(
+                               app.now_playing_view) &&
+                           app.focus == APP_FOCUS_CONTENT) {
+                    move_artist_selection(&app, worker, -1);
                 } else if (app.focus == APP_FOCUS_CONTENT &&
                     app.tab == TAB_DISCOVER && !app.network_online) {
                     /* Online content has no selectable rows while offline. */
@@ -3674,8 +4109,13 @@ int main(void) {
                 }
             }
             if ((repeat & KEY_DOWN) != 0) {
-                if (app.album_open && app.focus == APP_FOCUS_CONTENT) {
+                if (app.now_playing_view == NOW_PLAYING_ALBUM &&
+                    app.focus == APP_FOCUS_CONTENT) {
                     move_album_selection(&app, worker, 1);
+                } else if (now_playing_view_is_artist(
+                               app.now_playing_view) &&
+                           app.focus == APP_FOCUS_CONTENT) {
+                    move_artist_selection(&app, worker, 1);
                 } else if (app.focus == APP_FOCUS_CONTENT &&
                     app.tab == TAB_DISCOVER && !app.network_online) {
                     /* Online content has no selectable rows while offline. */
@@ -3749,11 +4189,23 @@ int main(void) {
                 }
             }
             if ((down & KEY_LEFT) != 0 &&
-                app.album_open && app.focus == APP_FOCUS_CONTENT)
+                app.now_playing_view == NOW_PLAYING_ALBUM &&
+                app.focus == APP_FOCUS_CONTENT)
                 move_album_page(&app, worker, -1);
             if ((down & KEY_RIGHT) != 0 &&
-                app.album_open && app.focus == APP_FOCUS_CONTENT)
+                app.now_playing_view == NOW_PLAYING_ALBUM &&
+                app.focus == APP_FOCUS_CONTENT)
                 move_album_page(&app, worker, 1);
+            if ((down & KEY_LEFT) != 0 &&
+                now_playing_view_is_artist(app.now_playing_view) &&
+                app.now_playing_view != NOW_PLAYING_ARTIST_PICKER &&
+                app.focus == APP_FOCUS_CONTENT)
+                move_artist_page(&app, worker, -1);
+            if ((down & KEY_RIGHT) != 0 &&
+                now_playing_view_is_artist(app.now_playing_view) &&
+                app.now_playing_view != NOW_PLAYING_ARTIST_PICKER &&
+                app.focus == APP_FOCUS_CONTENT)
+                move_artist_page(&app, worker, 1);
             if ((down & KEY_LEFT) != 0 &&
                 app.focus == APP_FOCUS_CONTENT &&
                 app.tab == TAB_DISCOVER) {
@@ -3844,8 +4296,10 @@ int main(void) {
                 if (app.focus == APP_FOCUS_PLAYLIST)
                     remove_playlist_item(&app, &playlist_store,
                                          ui, player, worker, media);
-                else if (app.album_open)
+                else if (app.now_playing_view == NOW_PLAYING_ALBUM)
                     begin_album_enqueue_prompt(&app, worker);
+                else if (app.now_playing_view == NOW_PLAYING_ARTIST_SONGS)
+                    begin_artist_song_enqueue_prompt(&app, worker);
                 else if (app.tab == TAB_DISCOVER &&
                          app.discover_section == DISCOVER_LIBRARY &&
                          app.library_view == LIBRARY_TRACKS &&
@@ -3862,6 +4316,10 @@ int main(void) {
             }
             if ((down & KEY_Y) && !(down & KEY_X)) {
                 if (app.focus == APP_FOCUS_CONTENT &&
+                    (app.now_playing_view == NOW_PLAYING_ARTIST_ALBUMS ||
+                     app.now_playing_view == NOW_PLAYING_ARTIST_SONGS)) {
+                    toggle_artist_list(&app, worker);
+                } else if (app.focus == APP_FOCUS_CONTENT &&
                     app.tab == TAB_DISCOVER &&
                     app.discover_section == DISCOVER_RECOMMENDATIONS &&
                     network_ready && app.network_online &&
@@ -3878,7 +4336,7 @@ int main(void) {
                 }
             }
             if (down & KEY_SELECT) {
-                if (app.album_open)
+                if (now_playing_view_has_detail(app.now_playing_view))
                     toggle_screen_focus(&app);
                 else if (app.tab == TAB_NOW_PLAYING)
                     cycle_play_mode(&app, &playlist_store);
@@ -3896,7 +4354,7 @@ int main(void) {
                         (void)request_queue_index(&app, worker,
                                                   app.queue_selected, false);
                     else toggle_pause(&app, player);
-                } else if (app.album_open) {
+                } else if (app.now_playing_view == NOW_PLAYING_ALBUM) {
                     if (app.mode == APP_LOADING_ALBUM)
                         i18n_snprintf(app.status, sizeof(app.status),
                                       "正在加载专辑歌曲");
@@ -3905,6 +4363,31 @@ int main(void) {
                         (void)request_selected_song(
                             &app, &playlist_store, worker,
                             &app.album_tracks[app.album_track_selected]);
+                    else if (!app.network_online)
+                        i18n_snprintf(app.status, sizeof(app.status),
+                                      "Wi-Fi 未连接，无法加入新歌曲");
+                } else if (app.now_playing_view ==
+                           NOW_PLAYING_ARTIST_PICKER) {
+                    if (app.mode == APP_LOADING_ARTIST)
+                        i18n_snprintf(app.status, sizeof(app.status),
+                                      "正在查找歌曲艺人");
+                    else choose_artist(&app, worker);
+                } else if (app.now_playing_view ==
+                           NOW_PLAYING_ARTIST_ALBUMS) {
+                    if (app.mode == APP_LOADING_ARTIST)
+                        i18n_snprintf(app.status, sizeof(app.status),
+                                      "正在加载艺人专辑");
+                    else open_artist_album(&app, worker);
+                } else if (app.now_playing_view ==
+                           NOW_PLAYING_ARTIST_SONGS) {
+                    if (app.mode == APP_LOADING_ARTIST)
+                        i18n_snprintf(app.status, sizeof(app.status),
+                                      "正在加载艺人歌曲");
+                    else if (app.artist_song_count > 0 &&
+                             app.network_online)
+                        (void)request_selected_song(
+                            &app, &playlist_store, worker,
+                            &app.artist_songs[app.artist_song_selected]);
                     else if (!app.network_online)
                         i18n_snprintf(app.status, sizeof(app.status),
                                       "Wi-Fi 未连接，无法加入新歌曲");

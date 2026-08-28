@@ -237,6 +237,17 @@ Use a disposable test account or non-sensitive uploads. Never attach
    `髙`, `﨑` and `𠮷`; confirm the same embedded point glyphs appear in normal
    and immersive lyrics. Record `app_free` and `linear_free` before playback
    and after entering immersive mode on an Old 3DS/2DS profile.
+   While the song is playing, open its artist page. For a collaboration, verify
+   every listed artist is selectable and opens the chosen artist rather than
+   silently choosing the first. Page through both albums and hot songs, switch
+   views with `Y`, and confirm `X` has no bulk action on the album list. On the
+   hot-song list, press `X`, verify the confirmation identifies the artist,
+   then add all pages while checking duplicate counts and cancellation with
+   `B`. Play a hot song and open an album; `B` from that album must return to
+   the artist page before returning to Now Playing. Repeat with long
+   Chinese, English, Japanese and Korean artist/album names, cancel each network
+   stage with `B`, disconnect Wi-Fi during paging, and confirm the queue keeps
+   playing without an input stall or a growing memory baseline on Old 3DS.
 5. On a 3D-capable system, start with the 3D slider at zero, then raise it
    slowly. Confirm the active lyric is the nearest tier; the rows immediately
    above and below share the next tier, followed by another symmetric pair and

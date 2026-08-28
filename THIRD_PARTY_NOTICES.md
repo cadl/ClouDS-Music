@@ -14,7 +14,7 @@
 - `romfs/immersive-font.bin` is a 24px monochrome glyph subset rasterized from
   pinned [Noto Sans CJK](https://github.com/notofonts/noto-cjk) Sans 2.004
   Simplified Chinese Regular source under SIL Open Font License 1.1.
-  `romfs/ui-menu-font.bcfnt` is the 499-glyph A4 subset used only for fixed
+  `romfs/ui-menu-font.bcfnt` is the 502-glyph A4 subset used only for fixed
   menu copy, buttons, dialogs and control hints.
   `romfs/content-point-font.bin` is the corresponding 12px visible-glyph
   subset used by 18px semantic UI content, and

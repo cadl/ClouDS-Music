@@ -18,13 +18,23 @@ int main(void) {
     assert(playback_selection_stays_on_page(&app));
 
     app.tab = TAB_NOW_PLAYING;
-    app.album_open = true;
+    app.now_playing_view = NOW_PLAYING_ALBUM;
     assert(playback_selection_stays_on_page(&app));
     assert(playback_back_should_preserve_extras(&app));
 
-    app.album_open = false;
+    app.now_playing_view = NOW_PLAYING_DEFAULT;
     assert(!playback_selection_stays_on_page(&app));
     assert(!playback_back_should_preserve_extras(&app));
+
+    app.now_playing_view = NOW_PLAYING_ARTIST_PICKER;
+    assert(playback_selection_stays_on_page(&app));
+    assert(playback_back_should_preserve_extras(&app));
+    app.now_playing_view = NOW_PLAYING_ARTIST_ALBUMS;
+    assert(playback_selection_stays_on_page(&app));
+    app.now_playing_view = NOW_PLAYING_ARTIST_SONGS;
+    assert(playback_selection_stays_on_page(&app));
+
+    app.now_playing_view = NOW_PLAYING_DEFAULT;
     app.tab = TAB_DISCOVER;
     app.discover_section = DISCOVER_SEARCH;
     assert(playback_selection_stays_on_page(&app));

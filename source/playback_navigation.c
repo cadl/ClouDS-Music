@@ -4,7 +4,7 @@
 
 bool playback_selection_stays_on_page(const AppState *app) {
     if (!app) return false;
-    if (app->album_open) return true;
+    if (now_playing_view_has_detail(app->now_playing_view)) return true;
     if (app->tab != TAB_DISCOVER) return false;
     if (app->discover_section == DISCOVER_RECOMMENDATIONS) return true;
     if (app->discover_section == DISCOVER_SEARCH) return true;
@@ -15,7 +15,8 @@ bool playback_selection_stays_on_page(const AppState *app) {
 
 bool playback_back_should_preserve_extras(const AppState *app) {
     if (!app) return false;
-    return app->tab != TAB_NOW_PLAYING || app->album_open;
+    return app->tab != TAB_NOW_PLAYING ||
+           now_playing_view_has_detail(app->now_playing_view);
 }
 
 bool playback_album_page_target(size_t current_offset, bool has_more,

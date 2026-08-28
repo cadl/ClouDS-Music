@@ -16,6 +16,9 @@
 #define NM3DS_CLOUD_FORMAT_CAPACITY 12
 #define NM3DS_ALBUM_PAGE 8
 #define NM3DS_ALBUM_VISIBLE_ROWS 7
+#define NM3DS_ARTIST_PAGE 8
+#define NM3DS_ARTIST_VISIBLE_ROWS 7
+#define NM3DS_SONG_ARTISTS_MAX 8
 #define NM3DS_MAX_QUEUE 1000
 #define NM3DS_PREFETCH_SCAN_MAX 16
 #define NM3DS_MAX_LYRICS 96
@@ -119,6 +122,17 @@ typedef struct {
     char name[128];
 } NeteasePlaylist;
 
+typedef struct {
+    int64_t id;
+    char name[96];
+} NeteaseArtist;
+
+typedef struct {
+    int64_t id;
+    uint32_t track_count;
+    char name[128];
+} NeteaseAlbum;
+
 typedef enum {
     TAB_NOW_PLAYING = 0,
     TAB_DISCOVER,
@@ -159,13 +173,32 @@ typedef enum {
     BULK_ENQUEUE_NONE = 0,
     BULK_ENQUEUE_LIBRARY,
     BULK_ENQUEUE_RECOMMENDATIONS,
-    BULK_ENQUEUE_ALBUM
+    BULK_ENQUEUE_ALBUM,
+    BULK_ENQUEUE_ARTIST_SONGS
 } BulkEnqueueKind;
 
 typedef enum {
     APP_FOCUS_CONTENT = 0,
     APP_FOCUS_PLAYLIST
 } AppFocus;
+
+typedef enum {
+    NOW_PLAYING_DEFAULT = 0,
+    NOW_PLAYING_ALBUM,
+    NOW_PLAYING_ARTIST_PICKER,
+    NOW_PLAYING_ARTIST_ALBUMS,
+    NOW_PLAYING_ARTIST_SONGS
+} NowPlayingView;
+
+static inline bool now_playing_view_is_artist(NowPlayingView view) {
+    return view == NOW_PLAYING_ARTIST_PICKER ||
+           view == NOW_PLAYING_ARTIST_ALBUMS ||
+           view == NOW_PLAYING_ARTIST_SONGS;
+}
+
+static inline bool now_playing_view_has_detail(NowPlayingView view) {
+    return view != NOW_PLAYING_DEFAULT;
+}
 
 typedef enum {
     LOGIN_CONTINUATION_NONE = 0,
@@ -182,6 +215,7 @@ typedef enum {
     APP_LOADING_LIBRARY_TRACKS,
     APP_LOADING_CLOUD,
     APP_LOADING_ALBUM,
+    APP_LOADING_ARTIST,
     APP_BULK_ENQUEUE,
     APP_LOADING_EXTRAS,
     APP_RESOLVING,
@@ -274,7 +308,8 @@ typedef struct {
     SearchPageState search_page;
     bool search_has_more;
 
-    bool album_open;
+    NowPlayingView now_playing_view;
+    NowPlayingView album_return_view;
     int64_t album_id;
     int64_t album_source_song_id;
     char album_name[96];
@@ -285,6 +320,25 @@ typedef struct {
     size_t album_track_offset;
     size_t album_track_total;
     bool album_track_has_more;
+
+    int64_t artist_source_song_id;
+    NeteaseArtist artist_choices[NM3DS_SONG_ARTISTS_MAX];
+    size_t artist_choice_count;
+    int artist_choice_selected;
+    int64_t artist_id;
+    char artist_name[96];
+    NeteaseAlbum artist_albums[NM3DS_ARTIST_PAGE];
+    size_t artist_album_count;
+    int artist_album_selected;
+    int artist_album_pending_selected;
+    size_t artist_album_offset;
+    bool artist_album_has_more;
+    Song artist_songs[NM3DS_ARTIST_PAGE];
+    size_t artist_song_count;
+    int artist_song_selected;
+    int artist_song_pending_selected;
+    size_t artist_song_offset;
+    bool artist_song_has_more;
 
     Song queue[NM3DS_MAX_QUEUE];
     bool queue_offline_playable[NM3DS_MAX_QUEUE];
