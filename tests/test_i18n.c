@@ -30,6 +30,14 @@ int main(void) {
     assert(strcmp(status,
                   "Not enough SD card space (64 MiB must remain free)") == 0);
     assert(strcmp(i18n_text("调试日志"), "Debug logging") == 0);
+    assert(strcmp(i18n_text("耳机合盖 L/R 切歌"),
+                  "Headset lid L/R skip") == 0);
+    assert(strcmp(i18n_text("关闭切歌"), "Off") == 0);
+    assert(strcmp(i18n_text("开启切歌"), "On") == 0);
+    assert(strcmp(i18n_text("耳机合盖 L/R 切歌已开启"),
+                  "Headphone lid L/R track skip enabled") == 0);
+    assert(strcmp(i18n_text("合盖 L/R 切歌已关闭"),
+                  "Lid L/R track skip disabled") == 0);
     assert(strcmp(i18n_text("版本"), "Version") == 0);
     assert(strcmp(i18n_text("GitHub 仓库"), "GitHub repository") == 0);
     assert(strcmp(i18n_text("联系作者反馈"),

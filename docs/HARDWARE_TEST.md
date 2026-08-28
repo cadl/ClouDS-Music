@@ -303,16 +303,31 @@ Use a disposable test account or non-sensitive uploads. Never attach
    at least two minutes. Confirm audio remains audible throughout, its position
    advances by roughly two minutes, and reopening restores rendering without an
    underrun.
-9. Repeat the headphone lid test while progressively downloading, buffering,
+9. Leave `Headset lid L/R skip` at its default Off state. During
+   headphone lid playback, press `L` and `R` separately and confirm neither
+   changes the current song. Reopen the lid and confirm `L/R` still change tabs.
+   Enable the setting, close the lid again, and confirm `L` starts the previous
+   song and `R` starts the next song. Press `L+R` simultaneously and confirm it
+   does not trigger two transitions. Restart the app and verify the setting is
+   preserved.
+10. Repeat the enabled shoulder-button test with progressively downloading,
+   buffering, offline cached playback, queue boundaries, and all three play
+   modes. Confirm a requested transition completes without leaving a `.part`
+   file. Disable the setting afterward and confirm the Off state is also
+   preserved across restart.
+11. Repeat the headphone lid test while progressively downloading, buffering,
    and crossing an automatic next-song transition. Confirm download and
    playback continue without leaving a `.part` file after completion.
-10. While headphone lid playback is active, unplug the headphones. Wait at
+12. While headphone lid playback is active, unplug the headphones. Wait at
     least 30 seconds, reopen the lid, and confirm the console entered sleep and
     playback resumes normally rather than continuing through the speakers.
-11. Pause playback with headphones connected, close and reopen the lid, and
+    With lid L/R skip enabled, also confirm shoulder buttons do not keep the
+    console awake after the headphones are removed.
+13. Pause playback with headphones connected, close and reopen the lid, and
     confirm the console sleeps and playback remains paused. Also confirm HOME
-    still suspends audio and returning to the app resumes it.
-12. On an original 2DS, repeat the playing and paused cases with the physical
+    still suspends audio and returning to the app resumes it. Enabling lid L/R
+    skip must not change the paused sleep behavior.
+14. On an original 2DS, repeat the playing and paused cases with the physical
     sleep switch and record any difference from clamshell models.
 
 ## Library queue and cache
@@ -332,8 +347,8 @@ Use a disposable test account or non-sensitive uploads. Never attach
    control hints, and status messages update immediately. Restart and verify
    English persists, then switch back to Chinese and verify it also persists.
 7. Confirm the compact Settings layout keeps the language, cache limit, and
-   clear-cache rows readable and fully inside the 400x240 top screen in both
-   languages.
+   headphone lid L/R, and clear-cache rows readable in the scrolling 400x240
+   top-screen view in both languages.
 8. Select each 64/128/256/512 MB cache limit and the unlimited option, then
    restart to verify persistence. With unlimited selected, verify downloads
    still stop before consuming the 64 MiB SD-card reserve. Lower the limit

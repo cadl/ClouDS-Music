@@ -30,6 +30,15 @@ typedef struct {
     uint32_t debug_logging;
 } SettingsFileV3;
 
+typedef struct {
+    char magic[4];
+    uint32_t version;
+    uint64_t cache_limit;
+    uint32_t language;
+    uint32_t debug_logging;
+    uint32_t lid_lr_skip;
+} SettingsFileV4;
+
 static void set_error(char *error, size_t size, const char *format, ...) {
     if (!error || size == 0) return;
     va_list args;
@@ -43,6 +52,7 @@ void settings_defaults(AppSettings *settings) {
     settings->cache_limit = NM3DS_CACHE_LIMIT_DEFAULT;
     settings->language = APP_LANGUAGE_CHINESE;
     settings->debug_logging = false;
+    settings->lid_lr_skip = false;
 }
 
 int settings_load(const char *path, AppSettings *settings,
@@ -51,7 +61,7 @@ int settings_load(const char *path, AppSettings *settings,
     FILE *file = fopen(path, "rb");
     if (!file) return 1;
 
-    SettingsFileV3 saved;
+    SettingsFileV4 saved;
     memset(&saved, 0, sizeof(saved));
     size_t bytes = fread(&saved, 1, sizeof(saved), file);
     bool eof = fgetc(file) == EOF && !ferror(file);
@@ -69,15 +79,22 @@ int settings_load(const char *path, AppSettings *settings,
                     bytes == sizeof(SettingsFileV3) &&
                     i18n_language_valid((int)saved.language) &&
                     saved.debug_logging <= 1U;
-    bool valid = v1_valid || v2_valid || v3_valid;
+    bool v4_valid = common_valid && saved.version == 4 &&
+                    bytes == sizeof(SettingsFileV4) &&
+                    i18n_language_valid((int)saved.language) &&
+                    saved.debug_logging <= 1U &&
+                    saved.lid_lr_skip <= 1U;
+    bool valid = v1_valid || v2_valid || v3_valid || v4_valid;
     if (!valid) {
         set_error(error, error_size, "保存的设置无效");
         return -1;
     }
     settings->cache_limit = saved.cache_limit;
-    settings->language = v2_valid || v3_valid ?
+    settings->language = v2_valid || v3_valid || v4_valid ?
                          (AppLanguage)saved.language : APP_LANGUAGE_CHINESE;
-    settings->debug_logging = v3_valid && saved.debug_logging != 0;
+    settings->debug_logging = (v3_valid || v4_valid) &&
+                              saved.debug_logging != 0;
+    settings->lid_lr_skip = v4_valid && saved.lid_lr_skip != 0;
     return 0;
 }
 
@@ -98,13 +115,14 @@ int settings_save(const char *path, const AppSettings *settings,
         set_error(error, error_size, "无法保存设置");
         return -1;
     }
-    SettingsFileV3 saved;
+    SettingsFileV4 saved;
     memset(&saved, 0, sizeof(saved));
     memcpy(saved.magic, "SETT", 4);
-    saved.version = 3;
+    saved.version = 4;
     saved.cache_limit = settings->cache_limit;
     saved.language = (uint32_t)settings->language;
     saved.debug_logging = settings->debug_logging ? 1U : 0U;
+    saved.lid_lr_skip = settings->lid_lr_skip ? 1U : 0U;
     bool wrote = fwrite(&saved, 1, sizeof(saved), file) == sizeof(saved);
     int close_result = fclose(file);
     if (!wrote || close_result != 0) {

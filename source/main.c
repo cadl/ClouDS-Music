@@ -2292,12 +2292,14 @@ static void maybe_submit_background_storage_scan(
 
 static int save_settings_for(const AppState *app, uint64_t cache_limit,
                              AppLanguage language, bool debug_logging,
+                             bool lid_lr_skip,
                              char *error, size_t error_size) {
     if (!app) return -1;
     AppSettings settings = {
         .cache_limit = cache_limit,
         .language = language,
         .debug_logging = debug_logging,
+        .lid_lr_skip = lid_lr_skip,
     };
     return settings_save(SETTINGS_PATH, &settings, error, error_size);
 }
@@ -2308,7 +2310,7 @@ static void apply_language(AppState *app, AppLanguage language) {
         return;
     char error[192];
     if (save_settings_for(app, app->cache_limit, language, app->debug_logging,
-                          error, sizeof(error)) != 0) {
+                          app->lid_lr_skip, error, sizeof(error)) != 0) {
         show_error(app, error);
         return;
     }
@@ -2329,7 +2331,7 @@ static void apply_debug_logging(AppState *app, bool enabled,
     }
     char error[192];
     if (save_settings_for(app, app->cache_limit, app->language, enabled,
-                          error, sizeof(error)) != 0) {
+                          app->lid_lr_skip, error, sizeof(error)) != 0) {
         show_error(app, error);
         return;
     }
@@ -2338,6 +2340,27 @@ static void apply_debug_logging(AppState *app, bool enabled,
         diagnostic_log(app, "debug_logging_enabled", player);
     i18n_snprintf(app->status, sizeof(app->status), enabled ?
                   "调试日志已开启" : "调试日志已关闭");
+}
+
+static void apply_lid_lr_skip(AppState *app, bool enabled) {
+    if (!app) return;
+    if (enabled == app->lid_lr_skip) {
+        i18n_snprintf(app->status, sizeof(app->status), enabled ?
+                      "耳机合盖 L/R 切歌已开启" :
+                      "合盖 L/R 切歌已关闭");
+        return;
+    }
+    char error[192];
+    if (save_settings_for(app, app->cache_limit, app->language,
+                          app->debug_logging, enabled,
+                          error, sizeof(error)) != 0) {
+        show_error(app, error);
+        return;
+    }
+    app->lid_lr_skip = enabled;
+    i18n_snprintf(app->status, sizeof(app->status), enabled ?
+                  "耳机合盖 L/R 切歌已开启" :
+                  "合盖 L/R 切歌已关闭");
 }
 
 static void apply_selected_cache_limit(AppState *app, NetworkWorker *worker) {
@@ -2375,7 +2398,7 @@ static void apply_selected_cache_limit(AppState *app, NetworkWorker *worker) {
     }
     char error[192];
     if (save_settings_for(app, limit, app->language, app->debug_logging,
-                          error, sizeof(error)) != 0) {
+                          app->lid_lr_skip, error, sizeof(error)) != 0) {
         show_error(app, error);
         return;
     }
@@ -3604,6 +3627,7 @@ int main(void) {
     app.cache_limit = saved_settings.cache_limit;
     app.language = saved_settings.language;
     app.debug_logging = saved_settings.debug_logging;
+    app.lid_lr_skip = saved_settings.lid_lr_skip;
     i18n_set_language(app.language);
     app.cache_limit_selected = cache_limit_option_index(app.cache_limit);
     app.cache_limit_confirm_choice = -1;
@@ -3618,6 +3642,7 @@ int main(void) {
         app.cache_limit = saved_settings.cache_limit;
         app.language = saved_settings.language;
         app.debug_logging = saved_settings.debug_logging;
+        app.lid_lr_skip = saved_settings.lid_lr_skip;
         i18n_set_language(app.language);
     }
     if (!ui_menu_font_ready(ui))
@@ -3830,6 +3855,28 @@ int main(void) {
         if (held & KEY_TOUCH) {
             hidTouchRead(&touch);
             touch_ptr = &touch;
+        }
+        bool playback_pending = player_is_available(player) &&
+                                app.pending_queue >= 0 &&
+                                app.pending_queue < (int)app.queue_count;
+        bool lid_skip_ready = playback_pending ||
+                              (player_is_active(player) &&
+                               !player_is_paused(player));
+        bool headset_connected = osIsHeadsetConnected();
+        LidSkipAction lid_action = lid_skip_action(
+            app.lid_lr_skip && lid_skip_ready, shell_closed,
+            headset_connected, (down & KEY_L) != 0, (down & KEY_R) != 0,
+            (held & KEY_L) != 0, (held & KEY_R) != 0);
+        if (lid_action == LID_SKIP_PREVIOUS)
+            play_previous(&app, worker);
+        else if (lid_action == LID_SKIP_NEXT)
+            play_next(&app, worker);
+        if (shell_closed) {
+            /* Never navigate tabs invisibly while the shell is closed.  With
+             * the opt-in transport setting off, both shoulder buttons are
+             * deliberate no-ops. */
+            down &= ~(KEY_L | KEY_R);
+            repeat &= ~(KEY_L | KEY_R);
         }
         if (app.immersive_lyrics) {
             if (down & KEY_B) {
@@ -4160,6 +4207,9 @@ int main(void) {
                 } else if (app.tab == TAB_SETTINGS &&
                            app.settings_selected == SETTINGS_DEBUG_LOGGING) {
                     apply_debug_logging(&app, false, player);
+                } else if (app.tab == TAB_SETTINGS &&
+                           app.settings_selected == SETTINGS_LID_LR_SKIP) {
+                    apply_lid_lr_skip(&app, false);
                 }
             }
             if ((repeat & KEY_RIGHT) != 0 && app.focus == APP_FOCUS_CONTENT) {
@@ -4186,6 +4236,9 @@ int main(void) {
                 } else if (app.tab == TAB_SETTINGS &&
                            app.settings_selected == SETTINGS_DEBUG_LOGGING) {
                     apply_debug_logging(&app, true, player);
+                } else if (app.tab == TAB_SETTINGS &&
+                           app.settings_selected == SETTINGS_LID_LR_SKIP) {
+                    apply_lid_lr_skip(&app, true);
                 }
             }
             if ((down & KEY_LEFT) != 0 &&
@@ -4457,6 +4510,8 @@ int main(void) {
                         apply_selected_cache_limit(&app, worker);
                     else if (app.settings_selected == SETTINGS_DEBUG_LOGGING)
                         apply_debug_logging(&app, !app.debug_logging, player);
+                    else if (app.settings_selected == SETTINGS_LID_LR_SKIP)
+                        apply_lid_lr_skip(&app, !app.lid_lr_skip);
                     else if (app.settings_selected == SETTINGS_CACHE_CLEAR)
                         confirm_clear_cache(&app, worker);
                 } else if (app.tab == TAB_DISCOVER &&

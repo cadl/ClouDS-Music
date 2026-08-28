@@ -61,6 +61,15 @@ typedef struct {
     uint32_t debug_logging;
 } SettingsFileV3Fixture;
 
+typedef struct {
+    char magic[4];
+    uint32_t version;
+    uint64_t cache_limit;
+    uint32_t language;
+    uint32_t debug_logging;
+    uint32_t lid_lr_skip;
+} SettingsFileV4Fixture;
+
 static void write_bytes(const char *path, size_t count) {
     FILE *file = fopen(path, "wb");
     assert(file != NULL);
@@ -124,11 +133,13 @@ int main(void) {
     assert(settings.cache_limit == NM3DS_CACHE_LIMIT_DEFAULT);
     assert(settings.language == APP_LANGUAGE_CHINESE);
     assert(!settings.debug_logging);
+    assert(!settings.lid_lr_skip);
     assert(settings_load(settings_path, &settings,
                          error, sizeof(error)) == 1);
     settings.cache_limit = 128 * NM3DS_CACHE_MIB;
     settings.language = APP_LANGUAGE_ENGLISH;
     settings.debug_logging = true;
+    settings.lid_lr_skip = true;
     assert(settings_save(settings_path, &settings,
                          error, sizeof(error)) == 0);
     settings_defaults(&settings);
@@ -137,6 +148,7 @@ int main(void) {
     assert(settings.cache_limit == 128 * NM3DS_CACHE_MIB);
     assert(settings.language == APP_LANGUAGE_ENGLISH);
     assert(settings.debug_logging);
+    assert(settings.lid_lr_skip);
     assert(NM3DS_CACHE_LIMIT_OPTION_COUNT == 5);
     assert(cache_limit_option(NM3DS_CACHE_LIMIT_OPTION_COUNT - 1U) ==
            NM3DS_CACHE_LIMIT_UNLIMITED);
@@ -169,6 +181,7 @@ int main(void) {
     assert(settings.cache_limit == 512 * NM3DS_CACHE_MIB);
     assert(settings.language == APP_LANGUAGE_CHINESE);
     assert(!settings.debug_logging);
+    assert(!settings.lid_lr_skip);
 
     SettingsFileV2Fixture legacy_v2 = {
         {'S', 'E', 'T', 'T'}, 2, NM3DS_CACHE_LIMIT_DEFAULT,
@@ -184,6 +197,23 @@ int main(void) {
                          error, sizeof(error)) == 0);
     assert(settings.language == APP_LANGUAGE_ENGLISH);
     assert(!settings.debug_logging);
+    assert(!settings.lid_lr_skip);
+
+    SettingsFileV3Fixture legacy_v3 = {
+        {'S', 'E', 'T', 'T'}, 3, NM3DS_CACHE_LIMIT_DEFAULT,
+        APP_LANGUAGE_ENGLISH, 1
+    };
+    legacy_settings_file = fopen(settings_path, "wb");
+    assert(legacy_settings_file != NULL);
+    assert(fwrite(&legacy_v3, 1, sizeof(legacy_v3), legacy_settings_file) ==
+           sizeof(legacy_v3));
+    assert(fclose(legacy_settings_file) == 0);
+    settings_defaults(&settings);
+    assert(settings_load(settings_path, &settings,
+                         error, sizeof(error)) == 0);
+    assert(settings.language == APP_LANGUAGE_ENGLISH);
+    assert(settings.debug_logging);
+    assert(!settings.lid_lr_skip);
 
     SettingsFileV2Fixture invalid_settings = {
         {'S', 'E', 'T', 'T'}, 2, NM3DS_CACHE_LIMIT_DEFAULT, 99, 0
@@ -199,6 +229,7 @@ int main(void) {
     assert(settings.cache_limit == NM3DS_CACHE_LIMIT_DEFAULT);
     assert(settings.language == APP_LANGUAGE_CHINESE);
     assert(!settings.debug_logging);
+    assert(!settings.lid_lr_skip);
 
     SettingsFileV3Fixture invalid_logging = {
         {'S', 'E', 'T', 'T'}, 3, NM3DS_CACHE_LIMIT_DEFAULT,
@@ -213,6 +244,21 @@ int main(void) {
     assert(settings_load(settings_path, &settings,
                          error, sizeof(error)) == -1);
     assert(!settings.debug_logging);
+    assert(!settings.lid_lr_skip);
+
+    SettingsFileV4Fixture invalid_lid_skip = {
+        {'S', 'E', 'T', 'T'}, 4, NM3DS_CACHE_LIMIT_DEFAULT,
+        APP_LANGUAGE_CHINESE, 0, 2
+    };
+    legacy_settings_file = fopen(settings_path, "wb");
+    assert(legacy_settings_file != NULL);
+    assert(fwrite(&invalid_lid_skip, 1, sizeof(invalid_lid_skip),
+                  legacy_settings_file) == sizeof(invalid_lid_skip));
+    assert(fclose(legacy_settings_file) == 0);
+    settings_defaults(&settings);
+    assert(settings_load(settings_path, &settings,
+                         error, sizeof(error)) == -1);
+    assert(!settings.lid_lr_skip);
     remove(settings_path);
     AppState app;
     memset(&app, 0, sizeof(app));

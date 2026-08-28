@@ -10,6 +10,7 @@ typedef struct {
     uint64_t cache_limit;
     AppLanguage language;
     bool debug_logging;
+    bool lid_lr_skip;
 } AppSettings;
 
 void settings_defaults(AppSettings *settings);

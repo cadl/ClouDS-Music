@@ -2111,6 +2111,7 @@ static int settings_item_y(int item) {
         case SETTINGS_LANGUAGE: return UI_SETTINGS_LANGUAGE_Y;
         case SETTINGS_CACHE_LIMIT: return UI_SETTINGS_LIMIT_Y;
         case SETTINGS_DEBUG_LOGGING: return UI_SETTINGS_DEBUG_Y;
+        case SETTINGS_LID_LR_SKIP: return UI_SETTINGS_LID_LR_SKIP_Y;
         case SETTINGS_CACHE_CLEAR: return UI_SETTINGS_CLEAR_Y;
         case SETTINGS_CONTACT: return UI_SETTINGS_CONTACT_Y;
         case SETTINGS_REPOSITORY: return UI_SETTINGS_REPOSITORY_Y;
@@ -2125,6 +2126,7 @@ static int settings_item_height(int item) {
         case SETTINGS_LANGUAGE: return UI_SETTINGS_LANGUAGE_HEIGHT;
         case SETTINGS_CACHE_LIMIT: return UI_SETTINGS_LIMIT_HEIGHT;
         case SETTINGS_DEBUG_LOGGING: return UI_SETTINGS_DEBUG_HEIGHT;
+        case SETTINGS_LID_LR_SKIP: return UI_SETTINGS_LID_LR_SKIP_HEIGHT;
         case SETTINGS_CACHE_CLEAR: return UI_SETTINGS_CLEAR_HEIGHT;
         case SETTINGS_CONTACT: return UI_SETTINGS_CONTACT_HEIGHT;
         case SETTINGS_REPOSITORY: return UI_SETTINGS_REPOSITORY_HEIGHT;
@@ -2310,6 +2312,30 @@ static void draw_settings(Ui *ui, const AppState *app) {
                   active ? COL_ORANGE : COL_GRID);
             label_centered(ui, i18n_text(debug_labels[i]), x,
                            debug_y + 1, 76, 22, UI_TEXT_LABEL,
+                           active ? COL_TEXT : COL_MUTED);
+        }
+    }
+
+    int lid_lr_skip_y = UI_SETTINGS_LID_LR_SKIP_Y - scroll_offset;
+    if (ui_settings_row_is_visible(UI_SETTINGS_LID_LR_SKIP_Y,
+                                   UI_SETTINGS_LID_LR_SKIP_HEIGHT,
+                                   scroll_offset)) {
+        bool focused = settings_item_focused(app, SETTINGS_LID_LR_SKIP);
+        panel(10, lid_lr_skip_y, 380, UI_SETTINGS_LID_LR_SKIP_HEIGHT,
+              focused ? COL_PANEL_2 : COL_PANEL,
+              focused ? COL_ORANGE : COL_GRID);
+        menu_text_fit(ui, i18n_text("耳机合盖 L/R 切歌"),
+                      22, lid_lr_skip_y + 3, UI_TEXT_LABEL,
+                      184, focused ? COL_TEXT : COL_ORANGE, 20);
+        const char *lid_skip_labels[2] = {"关闭切歌", "开启切歌"};
+        for (int i = 0; i < 2; i++) {
+            float x = 216.0f + i * 82.0f;
+            bool active = app->lid_lr_skip == (i != 0);
+            panel(x, lid_lr_skip_y + 1, 76, 22,
+                  active ? COL_BG : COL_PANEL_2,
+                  active ? COL_ORANGE : COL_GRID);
+            label_centered(ui, i18n_text(lid_skip_labels[i]), x,
+                           lid_lr_skip_y + 1, 76, 22, UI_TEXT_LABEL,
                            active ? COL_TEXT : COL_MUTED);
         }
     }
@@ -3115,6 +3141,8 @@ static void draw_page_controls(Ui *ui, const AppState *app,
                           app->settings_selected == SETTINGS_CACHE_LIMIT ?
                               "应用" :
                           app->settings_selected == SETTINGS_DEBUG_LOGGING ?
+                              "切换" :
+                          app->settings_selected == SETTINGS_LID_LR_SKIP ?
                               "切换" :
                           app->settings_selected == SETTINGS_CACHE_CLEAR ?
                               "清理" : "无操作",

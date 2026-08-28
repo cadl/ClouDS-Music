@@ -231,6 +231,7 @@ typedef enum {
     SETTINGS_LANGUAGE = 0,
     SETTINGS_CACHE_LIMIT,
     SETTINGS_DEBUG_LOGGING,
+    SETTINGS_LID_LR_SKIP,
     SETTINGS_CACHE_CLEAR,
     SETTINGS_CONTACT,
     SETTINGS_REPOSITORY,
@@ -245,7 +246,7 @@ static inline bool settings_item_is_interactive(int item) {
 
 static inline bool settings_item_is_adjustable(int item) {
     return item == SETTINGS_LANGUAGE || item == SETTINGS_CACHE_LIMIT ||
-           item == SETTINGS_DEBUG_LOGGING;
+           item == SETTINGS_DEBUG_LOGGING || item == SETTINGS_LID_LR_SKIP;
 }
 
 typedef enum {
@@ -381,6 +382,7 @@ typedef struct {
     int settings_selected;
     AppLanguage language;
     bool debug_logging;
+    bool lid_lr_skip;
     bool dsp_firmware_prompt_open;
     uint32_t dsp_firmware_result;
 

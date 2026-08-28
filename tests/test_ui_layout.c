@@ -147,6 +147,9 @@ int main(void) {
                UI_SETTINGS_LIMIT_OPTION_STEP +
            UI_SETTINGS_LIMIT_OPTION_WIDTH <= 390);
     assert(UI_SETTINGS_DEBUG_Y + UI_SETTINGS_DEBUG_HEIGHT <=
+           UI_SETTINGS_LID_LR_SKIP_Y);
+    assert(UI_SETTINGS_LID_LR_SKIP_Y +
+               UI_SETTINGS_LID_LR_SKIP_HEIGHT <=
            UI_SETTINGS_CLEAR_Y);
     assert(UI_SETTINGS_CLEAR_Y + UI_SETTINGS_CLEAR_HEIGHT <=
            UI_SETTINGS_CONTACT_Y);
@@ -161,7 +164,9 @@ int main(void) {
     assert(UI_SETTINGS_CONTENT_BOTTOM >
            UI_TOP_SCREEN_HEIGHT);
 
-    assert(SETTINGS_ITEM_COUNT == 8);
+    assert(SETTINGS_ITEM_COUNT == 9);
+    assert(SETTINGS_LID_LR_SKIP == SETTINGS_DEBUG_LOGGING + 1);
+    assert(SETTINGS_CACHE_CLEAR == SETTINGS_LID_LR_SKIP + 1);
     assert(SETTINGS_CONTACT == SETTINGS_CACHE_CLEAR + 1);
     assert(SETTINGS_REPOSITORY == SETTINGS_CONTACT + 1);
     assert(SETTINGS_USAGE_NOTICE == SETTINGS_REPOSITORY + 1);
@@ -173,6 +178,7 @@ int main(void) {
     assert(!settings_item_is_interactive(SETTINGS_CONTACT));
     assert(!settings_item_is_interactive(SETTINGS_USAGE_NOTICE));
     assert(settings_item_is_adjustable(SETTINGS_CACHE_LIMIT));
+    assert(settings_item_is_adjustable(SETTINGS_LID_LR_SKIP));
     assert(!settings_item_is_adjustable(SETTINGS_CACHE_CLEAR));
     assert(!settings_item_is_adjustable(SETTINGS_VERSION));
 
