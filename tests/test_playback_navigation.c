@@ -53,23 +53,41 @@ int main(void) {
 
     size_t target_offset = 99;
     int target_selected = 99;
-    assert(playback_album_page_target(
-        0, true, 1, &target_offset, &target_selected));
+    assert(playback_page_target(
+        0, NM3DS_ALBUM_PAGE, true, 1,
+        &target_offset, &target_selected));
     assert(target_offset == NM3DS_ALBUM_PAGE);
     assert(target_selected == 0);
-    assert(playback_album_page_target(
-        NM3DS_ALBUM_PAGE, false, -1,
+    assert(playback_page_target(
+        NM3DS_ALBUM_PAGE, NM3DS_ALBUM_PAGE, false, -1,
         &target_offset, &target_selected));
     assert(target_offset == 0);
     assert(target_selected == -1);
-    assert(!playback_album_page_target(
-        0, false, 1, &target_offset, &target_selected));
-    assert(!playback_album_page_target(
-        0, true, -1, &target_offset, &target_selected));
-    assert(!playback_album_page_target(
-        0, true, 0, &target_offset, &target_selected));
-    assert(!playback_album_page_target(0, true, 1, NULL, &target_selected));
-    assert(!playback_album_page_target(0, true, 1, &target_offset, NULL));
+    assert(playback_page_target(
+        0, NM3DS_ARTIST_ALBUM_PAGE, true, 1,
+        &target_offset, &target_selected));
+    assert(target_offset == NM3DS_ARTIST_ALBUM_PAGE);
+    assert(target_selected == 0);
+    assert(playback_page_target(
+        NM3DS_ARTIST_ALBUM_PAGE, NM3DS_ARTIST_ALBUM_PAGE, false, -1,
+        &target_offset, &target_selected));
+    assert(target_offset == 0);
+    assert(target_selected == -1);
+    assert(!playback_page_target(
+        0, NM3DS_ALBUM_PAGE, false, 1,
+        &target_offset, &target_selected));
+    assert(!playback_page_target(
+        0, NM3DS_ALBUM_PAGE, true, -1,
+        &target_offset, &target_selected));
+    assert(!playback_page_target(
+        0, NM3DS_ALBUM_PAGE, true, 0,
+        &target_offset, &target_selected));
+    assert(!playback_page_target(
+        0, 0, true, 1, &target_offset, &target_selected));
+    assert(!playback_page_target(
+        0, NM3DS_ALBUM_PAGE, true, 1, NULL, &target_selected));
+    assert(!playback_page_target(
+        0, NM3DS_ALBUM_PAGE, true, 1, &target_offset, NULL));
 
     puts("playback navigation tests: ok");
     return 0;

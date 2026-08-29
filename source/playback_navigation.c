@@ -19,20 +19,22 @@ bool playback_back_should_preserve_extras(const AppState *app) {
            now_playing_view_has_detail(app->now_playing_view);
 }
 
-bool playback_album_page_target(size_t current_offset, bool has_more,
-                                int direction, size_t *target_offset,
-                                int *target_selected) {
-    if (!target_offset || !target_selected || direction == 0) return false;
+bool playback_page_target(size_t current_offset, size_t page_size,
+                          bool has_more, int direction,
+                          size_t *target_offset, int *target_selected) {
+    if (page_size == 0 || !target_offset || !target_selected ||
+        direction == 0)
+        return false;
     if (direction > 0) {
-        if (!has_more || current_offset > SIZE_MAX - NM3DS_ALBUM_PAGE)
+        if (!has_more || current_offset > SIZE_MAX - page_size)
             return false;
-        *target_offset = current_offset + NM3DS_ALBUM_PAGE;
+        *target_offset = current_offset + page_size;
         *target_selected = 0;
         return true;
     }
     if (current_offset == 0) return false;
-    *target_offset = current_offset >= NM3DS_ALBUM_PAGE ?
-                     current_offset - NM3DS_ALBUM_PAGE : 0;
+    *target_offset = current_offset >= page_size ?
+                     current_offset - page_size : 0;
     *target_selected = -1;
     return true;
 }

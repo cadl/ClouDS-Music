@@ -16,7 +16,10 @@
 #define NM3DS_CLOUD_FORMAT_CAPACITY 12
 #define NM3DS_ALBUM_PAGE 8
 #define NM3DS_ALBUM_VISIBLE_ROWS 7
-#define NM3DS_ARTIST_PAGE 8
+/* Four seven-row viewports per album request; song paging stays small so
+   playback and bulk-enqueue responses remain bounded on Old 3DS. */
+#define NM3DS_ARTIST_ALBUM_PAGE 28
+#define NM3DS_ARTIST_SONG_PAGE 8
 #define NM3DS_ARTIST_VISIBLE_ROWS 7
 #define NM3DS_SONG_ARTISTS_MAX 8
 #define NM3DS_MAX_QUEUE 1000
@@ -328,13 +331,13 @@ typedef struct {
     int artist_choice_selected;
     int64_t artist_id;
     char artist_name[96];
-    NeteaseAlbum artist_albums[NM3DS_ARTIST_PAGE];
+    NeteaseAlbum artist_albums[NM3DS_ARTIST_ALBUM_PAGE];
     size_t artist_album_count;
     int artist_album_selected;
     int artist_album_pending_selected;
     size_t artist_album_offset;
     bool artist_album_has_more;
-    Song artist_songs[NM3DS_ARTIST_PAGE];
+    Song artist_songs[NM3DS_ARTIST_SONG_PAGE];
     size_t artist_song_count;
     int artist_song_selected;
     int artist_song_pending_selected;

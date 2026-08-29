@@ -1549,12 +1549,12 @@ static void draw_artist(Ui *ui, const AppState *app) {
     if (app->now_playing_view == NOW_PLAYING_ARTIST_ALBUMS) {
         i18n_snprintf(page, sizeof(page), "专辑 · 第 %u 页",
                       (unsigned int)(app->artist_album_offset /
-                                     NM3DS_ARTIST_PAGE + 1));
+                                     NM3DS_ARTIST_ALBUM_PAGE + 1));
         page_label = page;
     } else if (app->now_playing_view == NOW_PLAYING_ARTIST_SONGS) {
         i18n_snprintf(page, sizeof(page), "歌曲 · 第 %u 页",
                       (unsigned int)(app->artist_song_offset /
-                                     NM3DS_ARTIST_PAGE + 1));
+                                     NM3DS_ARTIST_SONG_PAGE + 1));
         page_label = page;
     }
     menu_text_fit(ui, i18n_text(page_label), 12, 220,
@@ -3534,7 +3534,7 @@ static void draw_bulk_enqueue_progress(Ui *ui, const AppState *app) {
         artist ? 0 : app->library_open_track_count;
     size_t page_size = recommendations ? NM3DS_RECOMMEND_RESULTS :
         album ? NM3DS_ALBUM_PAGE :
-        artist ? NM3DS_ARTIST_PAGE : NM3DS_LIBRARY_BATCH_PAGE;
+        artist ? NM3DS_ARTIST_SONG_PAGE : NM3DS_LIBRARY_BATCH_PAGE;
     C2D_TargetClear(ui->bottom, COL_BG);
     C2D_SceneBegin(ui->bottom);
     C2D_DrawRectSolid(0, 0, 0.1f, 320, 3, COL_RED);

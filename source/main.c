@@ -1199,8 +1199,9 @@ static void move_album_page(AppState *app, NetworkWorker *worker,
         return;
     size_t target_offset;
     int target_selected;
-    if (!playback_album_page_target(
-            app->album_track_offset, app->album_track_has_more, direction,
+    if (!playback_page_target(
+            app->album_track_offset, NM3DS_ALBUM_PAGE,
+            app->album_track_has_more, direction,
             &target_offset, &target_selected))
         return;
     if (!submit_album_page(app, worker, target_offset, target_selected))
@@ -1293,13 +1294,14 @@ static bool submit_artist_page(AppState *app, NetworkWorker *worker,
         app->artist_album_pending_selected = selected;
         i18n_snprintf(app->status, sizeof(app->status),
                       "正在加载艺人专辑 · 第 %u 页",
-                      (unsigned int)(offset / NM3DS_ARTIST_PAGE + 1));
+                      (unsigned int)(offset /
+                                     NM3DS_ARTIST_ALBUM_PAGE + 1));
     } else {
         app->artist_song_count = 0;
         app->artist_song_pending_selected = selected;
         i18n_snprintf(app->status, sizeof(app->status),
                       "正在加载艺人歌曲 · 第 %u 页",
-                      (unsigned int)(offset / NM3DS_ARTIST_PAGE + 1));
+                      (unsigned int)(offset / NM3DS_ARTIST_SONG_PAGE + 1));
     }
     return true;
 }
@@ -1422,8 +1424,10 @@ static void move_artist_page(AppState *app, NetworkWorker *worker,
                     app->artist_album_has_more : app->artist_song_has_more;
     size_t target_offset;
     int target_selected;
-    if (!playback_album_page_target(offset, has_more, direction,
-                                    &target_offset, &target_selected))
+    size_t page_size = app->now_playing_view == NOW_PLAYING_ARTIST_ALBUMS ?
+                       NM3DS_ARTIST_ALBUM_PAGE : NM3DS_ARTIST_SONG_PAGE;
+    if (!playback_page_target(offset, page_size, has_more, direction,
+                              &target_offset, &target_selected))
         return;
     if (!submit_artist_page(app, worker, app->now_playing_view,
                             target_offset, target_selected))
@@ -1503,7 +1507,7 @@ static size_t bulk_enqueue_page_size(BulkEnqueueKind kind) {
     if (kind == BULK_ENQUEUE_RECOMMENDATIONS)
         return NM3DS_RECOMMEND_RESULTS;
     if (kind == BULK_ENQUEUE_ALBUM) return NM3DS_ALBUM_PAGE;
-    return kind == BULK_ENQUEUE_ARTIST_SONGS ? NM3DS_ARTIST_PAGE :
+    return kind == BULK_ENQUEUE_ARTIST_SONGS ? NM3DS_ARTIST_SONG_PAGE :
                                               NM3DS_LIBRARY_BATCH_PAGE;
 }
 
@@ -2799,7 +2803,7 @@ static void apply_worker_result(AppState *app, PlaylistStore *store,
             i18n_snprintf(app->status, sizeof(app->status),
                           "已加载艺人专辑 · 第 %u 页",
                           (unsigned int)(result->offset /
-                                         NM3DS_ARTIST_PAGE + 1));
+                                         NM3DS_ARTIST_ALBUM_PAGE + 1));
             break;
         }
         case WORKER_JOB_ARTIST_SONGS: {
@@ -2821,7 +2825,7 @@ static void apply_worker_result(AppState *app, PlaylistStore *store,
             i18n_snprintf(app->status, sizeof(app->status),
                           "已加载艺人歌曲 · 第 %u 页",
                           (unsigned int)(result->offset /
-                                         NM3DS_ARTIST_PAGE + 1));
+                                         NM3DS_ARTIST_SONG_PAGE + 1));
             break;
         }
         case WORKER_JOB_PLAYLIST_ENQUEUE:

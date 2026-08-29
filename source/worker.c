@@ -317,9 +317,10 @@ static void run_artist_albums(NetworkWorker *worker, const WorkerJob *job,
     result->artist_id = job->artist_id;
     result->offset = job->offset;
     worker_status(worker, "正在加载艺人专辑 · 第 %u 页",
-                  (unsigned int)(job->offset / NM3DS_ARTIST_PAGE + 1));
+                  (unsigned int)(job->offset /
+                                 NM3DS_ARTIST_ALBUM_PAGE + 1));
     if (netease_artist_albums(worker->client, job->artist_id, job->offset,
-                              result->albums, NM3DS_ARTIST_PAGE,
+                              result->albums, NM3DS_ARTIST_ALBUM_PAGE,
                               &result->album_count, &result->has_more,
                               error, sizeof(error)) != 0) {
         finish_failure(worker, result, error);
@@ -337,9 +338,9 @@ static void run_artist_songs(NetworkWorker *worker, const WorkerJob *job,
     worker_status(worker, enqueue ?
                   "正在全部加入艺人歌曲 · 第 %u 页" :
                   "正在加载艺人歌曲 · 第 %u 页",
-                  (unsigned int)(job->offset / NM3DS_ARTIST_PAGE + 1));
+                  (unsigned int)(job->offset / NM3DS_ARTIST_SONG_PAGE + 1));
     if (netease_artist_songs(worker->client, job->artist_id, job->offset,
-                             result->songs, NM3DS_ARTIST_PAGE,
+                             result->songs, NM3DS_ARTIST_SONG_PAGE,
                              &result->song_count, &result->has_more,
                              error, sizeof(error)) != 0) {
         finish_failure(worker, result, error);

@@ -1313,7 +1313,7 @@ int netease_artist_albums(NeteaseClient *client, int64_t artist_id,
                           size_t capacity, size_t *count, bool *has_more,
                           char *error, size_t error_size) {
     if (!client || artist_id <= 0 || !albums || capacity == 0 ||
-        capacity > NM3DS_ARTIST_PAGE || capacity == SIZE_MAX ||
+        capacity > NM3DS_ARTIST_ALBUM_PAGE || capacity == SIZE_MAX ||
         !count || !has_more) {
         set_error(error, error_size, "艺人专辑请求无效");
         return -1;
@@ -1401,7 +1401,7 @@ int netease_artist_songs(NeteaseClient *client, int64_t artist_id,
                          size_t *count, bool *has_more,
                          char *error, size_t error_size) {
     if (!client || artist_id <= 0 || !songs || capacity == 0 ||
-        capacity > NM3DS_ARTIST_PAGE || capacity == SIZE_MAX ||
+        capacity > NM3DS_ARTIST_SONG_PAGE || capacity == SIZE_MAX ||
         !count || !has_more) {
         set_error(error, error_size, "艺人歌曲请求无效");
         return -1;

@@ -9,6 +9,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
+_Static_assert(NM3DS_ARTIST_SONG_PAGE <= NM3DS_RECOMMEND_RESULTS,
+               "artist song pages must fit WorkerResult.songs");
+
 typedef enum {
     WORKER_JOB_NONE = 0,
     WORKER_JOB_DISCOVER,
@@ -94,7 +97,7 @@ typedef struct {
     NeteaseArtist artists[NM3DS_SONG_ARTISTS_MAX];
     size_t artist_count;
     int64_t artist_id;
-    NeteaseAlbum albums[NM3DS_ARTIST_PAGE];
+    NeteaseAlbum albums[NM3DS_ARTIST_ALBUM_PAGE];
     size_t album_count;
     size_t offset;
     bool has_more;

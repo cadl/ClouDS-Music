@@ -239,7 +239,9 @@ Use a disposable test account or non-sensitive uploads. Never attach
    and after entering immersive mode on an Old 3DS/2DS profile.
    While the song is playing, open its artist page. For a collaboration, verify
    every listed artist is selectable and opens the chosen artist rather than
-   silently choosing the first. Page through both albums and hot songs, switch
+   silently choosing the first. Use an artist with at least 29 albums and
+   confirm the first album page scrolls through 28 unique entries before the
+   next page begins without a duplicate or gap. Page through hot songs, switch
    views with `Y`, and confirm `X` has no bulk action on the album list. On the
    hot-song list, press `X`, verify the confirmation identifies the artist,
    then add all pages while checking duplicate counts and cancellation with
