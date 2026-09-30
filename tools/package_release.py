@@ -298,6 +298,7 @@ def verify_archives(binary_zip: Path, source_tar: Path, version: str) -> None:
         f"ClouDS-Music-{version}/ClouDS-Music.3dsx",
         f"ClouDS-Music-{version}/ClouDS-Music.cia",
         f"ClouDS-Music-{version}/third_party/minimp3-CC0-1.0.txt",
+        f"ClouDS-Music-{version}/third_party/dr_flac-Unlicense-MIT-0.txt",
     }
     with zipfile.ZipFile(binary_zip) as archive:
         names = set(archive.namelist())
@@ -307,6 +308,7 @@ def verify_archives(binary_zip: Path, source_tar: Path, version: str) -> None:
 
     source_required = {
         f"ClouDS-Music-{version}-source/external/minimp3/minimp3_ex.h",
+        f"ClouDS-Music-{version}-source/external/dr_flac/dr_flac.h",
         f"ClouDS-Music-{version}-source/data/pinyin_dict_src/base.dict.yaml",
         f"ClouDS-Music-{version}-source/SOURCE_PROVENANCE.txt",
     }

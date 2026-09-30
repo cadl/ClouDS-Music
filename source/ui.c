@@ -1832,7 +1832,7 @@ static void draw_cloud(Ui *ui, const AppState *app) {
         panel(20, 72, 360, 130, COL_PANEL, COL_GRID);
         menu_text_fit(ui, i18n_text("登录后查看音乐云盘"),
                       104, 105, UI_TEXT_TITLE, 220, COL_TEXT, 24);
-        menu_text_fit(ui, i18n_text("云盘文件将请求为 MP3 播放"),
+        menu_text_fit(ui, i18n_text("云盘支持 MP3 和 FLAC 播放"),
                       88, 134, UI_TEXT_LARGE, 244, COL_MUTED, 22);
         label_text(ui, "A 登录", 168, 165, UI_TEXT_LABEL, COL_CYAN);
         return;

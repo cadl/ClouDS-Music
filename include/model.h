@@ -424,4 +424,6 @@ typedef struct {
     uint64_t media_loaded_bytes;
     uint64_t media_total_bytes;
     uint64_t media_start_target_bytes;
+    /* Song whose stream must wait for the complete download. */
+    int64_t media_stream_deferred_song_id;
 } AppState;
