@@ -97,6 +97,7 @@ static void reset_media_progress(AppState *app, int64_t song_id) {
     app->media_loaded_bytes = 0;
     app->media_total_bytes = 0;
     app->media_start_target_bytes = MEDIA_PREBUFFER_MIN_BYTES;
+    app->media_stream_deferred_song_id = 0;
 }
 
 static void complete_media_progress(AppState *app, int64_t song_id) {
@@ -2608,7 +2609,7 @@ static void apply_worker_result(AppState *app, PlaylistStore *store,
             int index = queue_index_for_song(app, result->song_id);
             if (index >= 0) {
                 i18n_snprintf(app->status, sizeof(app->status),
-                         "缓存的 MP3 无效，正在重新下载");
+                         "缓存的音频无效，正在重新下载");
                 (void)request_queue_index(app, worker, index, true);
                 return;
             }
@@ -2989,7 +2990,7 @@ static void apply_worker_result(AppState *app, PlaylistStore *store,
                 if (!player_is_active(player)) app->current_queue = -1;
                 if (result->audio_was_cached && player_is_available(player)) {
                     i18n_snprintf(app->status, sizeof(app->status),
-                             "缓存的 MP3 无效，正在重新下载");
+                             "缓存的音频无效，正在重新下载");
                     (void)request_queue_index(app, worker, index, true);
                 } else {
                     app->pending_queue = -1;
@@ -3005,7 +3006,10 @@ static void apply_worker_result(AppState *app, PlaylistStore *store,
             complete_media_progress(app, result->song_id);
             app->mode = APP_PLAYING;
             bool seek_job_started = true;
-            if (result->audio_seek_pending) {
+            /* MP3 still needs its full seek index.  Seekable FLAC only needs
+             * the job when switching cache variants changed the cache. */
+            if (result->audio_seek_pending &&
+                (player_is_indexing(player) || result->cache_changed)) {
                 MediaJob seek_job;
                 memset(&seek_job, 0, sizeof(seek_job));
                 seek_job.song_id = result->song_id;
@@ -3018,7 +3022,7 @@ static void apply_worker_result(AppState *app, PlaylistStore *store,
                 seek_job_started = media &&
                     media_worker_submit(media, &seek_job);
             }
-            if (!seek_job_started)
+            if (!seek_job_started && player_is_indexing(player))
                 i18n_snprintf(app->status, sizeof(app->status),
                               "正在播放 · 暂不能跳转");
             else set_playing_status(app, index);
@@ -3228,7 +3232,15 @@ static void apply_media_result(AppState *app, Ui *ui, Player *player,
     }
     if (result->prepare_cached) {
         if (result->cancelled || !result->success || !current_index) {
+            /* FLAC opens seekable; its job only maintained the cache. */
+            bool current_seekable = result->success && !result->cancelled &&
+                                    index >= 0 && app->current_queue == index &&
+                                    player_can_seek(player);
             player_prepared_destroy(result->prepared_audio);
+            if (current_seekable) {
+                apply_media_cache_stats(app, result);
+                return;
+            }
             if (!result->cancelled && !result->success && current_index) {
                 app->mode = player_is_paused(player) ?
                             APP_PAUSED : APP_PLAYING;
@@ -3352,9 +3364,11 @@ static void update_media(AppState *app, Ui *ui, Player *player,
     app->media_loaded_bytes = snapshot.published;
     if (snapshot.total) app->media_total_bytes = snapshot.total;
     app->media_start_target_bytes =
-        media_prebuffer_target(app->media_total_bytes);
+        media_stream_start_target(app->media_total_bytes,
+                                  snapshot.audio_offset);
+    bool deferred = app->media_stream_deferred_song_id == snapshot.song_id;
 
-    if (app->pending_queue == index &&
+    if (app->pending_queue == index && !deferred &&
         snapshot.published >= app->media_start_target_bytes &&
         snapshot.prefetch_ready) {
         ProgressiveFile *stream = media_worker_stream(media, snapshot.song_id);
@@ -3372,6 +3386,15 @@ static void update_media(AppState *app, Ui *ui, Player *player,
             set_playing_status(app, index);
             maybe_submit_song_extras(app, worker, index);
             diagnostic_log_media(app, "stream_open_ok", player,
+                                 snapshot.published,
+                                 app->media_total_bytes,
+                                 app->media_start_target_bytes);
+        } else if (opened == PLAYER_STREAM_DEFERRED) {
+            /* The download continues; the complete file opens through the
+             * normal media result path. */
+            app->media_stream_deferred_song_id = snapshot.song_id;
+            deferred = true;
+            diagnostic_log_media(app, "stream_deferred", player,
                                  snapshot.published,
                                  app->media_total_bytes,
                                  app->media_start_target_bytes);
@@ -3410,7 +3433,11 @@ static void update_media(AppState *app, Ui *ui, Player *player,
         bool switching = player_is_active(player) &&
                          app->current_queue >= 0 &&
                          app->current_queue != index;
-        if (!switching) {
+        if (!switching && deferred) {
+            i18n_snprintf(
+                app->status, sizeof(app->status), "正在下载完整 FLAC %u%%",
+                media_download_percent(snapshot.received, snapshot.total));
+        } else if (!switching) {
             i18n_snprintf(
                 app->status, sizeof(app->status), "正在准备播放 %u%%",
                 media_download_percent(snapshot.published,

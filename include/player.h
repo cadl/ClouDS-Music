@@ -6,6 +6,10 @@
 
 #include "progressive.h"
 
+/* player_open_stream() result: the stream is valid but can only be played
+ * from the complete file, so the caller should wait for the download. */
+#define PLAYER_STREAM_DEFERRED 1
+
 typedef struct Player Player;
 typedef struct PreparedAudio PreparedAudio;
 typedef int (*PlayerCancelFn)(void *userdata);
@@ -28,6 +32,7 @@ int player_open_prepared(Player *player, PreparedAudio *prepared,
                          char *error, size_t error_size);
 int player_replace_prepared(Player *player, PreparedAudio *prepared,
                             double seconds, char *error, size_t error_size);
+/* Returns 0, -1 on error, or PLAYER_STREAM_DEFERRED with a status message. */
 int player_open_stream(Player *player, ProgressiveFile *source,
                        char *error, size_t error_size);
 int player_open(Player *player, const char *path, char *error, size_t error_size);

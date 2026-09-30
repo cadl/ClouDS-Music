@@ -24,6 +24,8 @@ typedef struct {
     uint64_t received;
     uint64_t total;
     uint64_t published;
+    /* First audio byte; FLAC metadata before it does not count as audio. */
+    uint64_t audio_offset;
     bool prefetch_ready;
     bool prepare_cached;
     bool audio_is_trial;

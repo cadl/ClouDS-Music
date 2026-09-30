@@ -10,7 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define PROGRESSIVE_CACHE_SIZE (128U * 1024U)
+#define PROGRESSIVE_CACHE_SIZE PROGRESSIVE_WINDOW_SIZE
 #define PROGRESSIVE_IO_STACK_SIZE (32U * 1024U)
 #define PROGRESSIVE_IO_PRIORITY 0x32
 
@@ -35,8 +35,28 @@ struct ProgressiveFile {
     uint8_t *cache;
     uint64_t cache_position;
     size_t cache_size;
+    /* The initial prefetch targets `anchor` until a reader takes over the
+     * window; afterwards only reader requests may move it. */
+    uint64_t anchor;
+    bool reader_active;
+    ProgressiveProbeState probe_state;
+    AudioProbe probe;
     char error[192];
 };
+
+/* Caller holds file->lock. */
+static bool schedule_anchor_prefetch(ProgressiveFile *file) {
+    if (file->reader_active || file->io_pending || file->io_loading ||
+        file->published < file->anchor ||
+        file->published - file->anchor < PROGRESSIVE_CACHE_SIZE ||
+        (file->cache_position == file->anchor &&
+         file->cache_size >= PROGRESSIVE_CACHE_SIZE))
+        return false;
+    file->io_position = file->anchor;
+    file->io_size = PROGRESSIVE_CACHE_SIZE;
+    file->io_pending = true;
+    return true;
+}
 
 static void progressive_io_main(void *userdata) {
     ProgressiveFile *file = (ProgressiveFile *)userdata;
@@ -84,6 +104,7 @@ static void progressive_io_main(void *userdata) {
         }
         file->io_loading = false;
         bool retry = file->io_pending && file->io_position < file->published;
+        if (!retry) retry = schedule_anchor_prefetch(file);
         LightLock_Unlock(&file->lock);
         if (retry) LightEvent_Signal(&file->io_wake);
     }
@@ -172,15 +193,7 @@ void progressive_file_publish(ProgressiveFile *file,
     if (published > file->published) file->published = published;
     if (total) file->total = total;
     bool signal = file->io_pending && file->io_position < file->published;
-    if (!file->io_pending && !file->io_loading &&
-        file->published >= PROGRESSIVE_CACHE_SIZE &&
-        (file->cache_position != 0 ||
-         file->cache_size < PROGRESSIVE_CACHE_SIZE)) {
-        file->io_position = 0;
-        file->io_size = PROGRESSIVE_CACHE_SIZE;
-        file->io_pending = true;
-        signal = true;
-    }
+    if (schedule_anchor_prefetch(file)) signal = true;
     LightLock_Unlock(&file->lock);
     if (signal) LightEvent_Signal(&file->io_wake);
 }
@@ -241,6 +254,7 @@ size_t progressive_file_read_at(ProgressiveFile *file, uint64_t position,
                                 void *buffer, size_t size) {
     if (!file || !buffer || size == 0) return 0;
     LightLock_Lock(&file->lock);
+    file->reader_active = true;
     if (!file->io_loading && position >= file->cache_position &&
         position - file->cache_position < file->cache_size) {
         size_t offset = (size_t)(position - file->cache_position);
@@ -275,10 +289,65 @@ void progressive_file_snapshot(ProgressiveFile *file,
     snapshot->complete = file->complete;
     snapshot->failed = file->failed;
     snapshot->cancelled = file->cancelled;
-    snapshot->prefetch_ready = !file->io_loading &&
-                               file->cache_position == 0 &&
-                               file->cache_size >= PROGRESSIVE_CACHE_SIZE;
+    snapshot->prefetch_ready =
+        file->probe_state != PROGRESSIVE_PROBE_PENDING &&
+        !file->io_loading && file->cache_position == file->anchor &&
+        file->cache_size >= PROGRESSIVE_CACHE_SIZE;
     snapshot->io_pending = file->io_loading || file->io_pending;
+    snapshot->probe_state = file->probe_state;
+    snapshot->audio_offset = file->anchor;
     snprintf(snapshot->error, sizeof(snapshot->error), "%s", file->error);
     LightLock_Unlock(&file->lock);
+}
+
+void progressive_file_set_probe(ProgressiveFile *file,
+                                const AudioProbe *probe) {
+    if (!file) return;
+    LightLock_Lock(&file->lock);
+    if (probe) {
+        file->probe = *probe;
+        file->probe_state = PROGRESSIVE_PROBE_READY;
+        file->anchor = probe->format == AUDIO_FORMAT_FLAC ?
+                       probe->audio_offset : 0;
+    } else {
+        file->probe_state = PROGRESSIVE_PROBE_INVALID;
+    }
+    bool signal = schedule_anchor_prefetch(file);
+    LightLock_Unlock(&file->lock);
+    if (signal) LightEvent_Signal(&file->io_wake);
+}
+
+ProgressiveProbeState progressive_file_probe(ProgressiveFile *file,
+                                             AudioProbe *probe) {
+    if (!file) return PROGRESSIVE_PROBE_INVALID;
+    LightLock_Lock(&file->lock);
+    ProgressiveProbeState state = file->probe_state;
+    if (probe && state == PROGRESSIVE_PROBE_READY) *probe = file->probe;
+    LightLock_Unlock(&file->lock);
+    return state;
+}
+
+size_t progressive_file_window(ProgressiveFile *file, uint64_t position,
+                               size_t wanted) {
+    if (!file) return 0;
+    if (wanted > PROGRESSIVE_CACHE_SIZE) wanted = PROGRESSIVE_CACHE_SIZE;
+    LightLock_Lock(&file->lock);
+    file->reader_active = true;
+    size_t resident = 0;
+    if (!file->io_loading && position >= file->cache_position &&
+        position - file->cache_position < file->cache_size)
+        resident = file->cache_size - (size_t)(position - file->cache_position);
+    uint64_t published = file->published > position ?
+                         file->published - position : 0;
+    bool signal = false;
+    if (resident < wanted && published > resident && !file->io_loading &&
+        (!file->io_pending || file->io_position != position)) {
+        file->io_position = position;
+        file->io_size = PROGRESSIVE_CACHE_SIZE;
+        file->io_pending = true;
+        signal = true;
+    }
+    LightLock_Unlock(&file->lock);
+    if (signal) LightEvent_Signal(&file->io_wake);
+    return resident;
 }

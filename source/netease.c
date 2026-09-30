@@ -1774,11 +1774,14 @@ int netease_song_url(NeteaseClient *client, int64_t song_id,
                           sizeof(parsed_playback.format));
     for (char *cursor = parsed_playback.format; *cursor; cursor++)
         *cursor = (char)tolower((unsigned char)*cursor);
+    /* Catalogue songs are transcoded to the requested MP3, but music cloud
+     * uploads are served in their original format. */
     if (parsed_playback.format[0] &&
         strcmp(parsed_playback.format, "mp3") != 0 &&
-        strcmp(parsed_playback.format, "mpeg") != 0) {
+        strcmp(parsed_playback.format, "mpeg") != 0 &&
+        strcmp(parsed_playback.format, "flac") != 0) {
         set_error(error, error_size,
-                  "服务端返回 %s，本机仅支持 MP3",
+                  "服务端返回 %s，本机仅支持 MP3 和 FLAC",
                   parsed_playback.format);
         url[0] = '\0';
         free(tokens);

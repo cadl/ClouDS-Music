@@ -18,7 +18,7 @@ endif
 TARGET      := ClouDS-Music
 BUILD       := build
 SOURCES     := source external/qrcodegen
-INCLUDES    := include external/minimp3 external/qrcodegen
+INCLUDES    := include external/minimp3 external/dr_flac external/qrcodegen
 ROMFS       := romfs
 ROMFS_FILES := $(wildcard $(PROJECT_ROOT)/$(ROMFS)/*)
 ICON        := icon-v4.png
@@ -204,6 +204,10 @@ host-test:
 	@cc -std=c11 -Wall -Wextra -Werror -Iinclude \
 		source/media_policy.c tests/test_media_policy.c -o tests/test_media_policy
 	@tests/test_media_policy
+	@cc -std=c11 -Wall -Wextra -Werror -Iinclude -Iexternal/dr_flac \
+		source/audio_format.c source/dr_flac_impl.c tests/test_audio_format.c \
+		-o tests/test_audio_format
+	@tests/test_audio_format
 	@cc -std=c11 -Wall -Wextra -Werror -Iinclude \
 		source/now_playing_policy.c source/immersive_lyrics.c \
 		tests/test_now_playing_policy.c \
@@ -349,6 +353,7 @@ clean:
 		tests/test_search_page tests/test_ui_layout tests/test_gpu_texture \
 		tests/test_control_hint_layout \
 		tests/test_download_policy tests/test_media_policy \
+		tests/test_audio_format \
 		tests/test_now_playing_policy tests/test_power_policy \
 		tests/test_network_retry tests/test_diagnostic_text \
 		tests/test_playback_navigation tests/test_playback_order \

@@ -2,12 +2,14 @@
 
 #include "i18n.h"
 
+#include "audio_format.h"
 #include "cache.h"
 #include "net.h"
 #include "storage_paths.h"
 
 #include <3ds.h>
 
+#include <limits.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,6 +18,8 @@
 #define MEDIA_WORKER_STACK_SIZE (96U * 1024U)
 #define MEDIA_WORKER_PRIORITY 0x31
 #define CACHE_ROOT STORAGE_ROOT
+/* Enough for an MP3 sync word or an ID3v2 header before probing. */
+#define MEDIA_PROBE_MIN_BYTES 16U
 
 struct MediaWorker {
     Thread thread;
@@ -36,7 +40,16 @@ struct MediaWorker {
     uint64_t received;
     uint64_t total;
     char status[192];
+    /* Container probing state, touched only by the media thread. */
+    bool probe_pending;
+    uint64_t probe_needed;
+    char probe_path[272];
 };
+
+typedef struct {
+    FILE *file;
+    bool failed;
+} PartReader;
 
 static void set_error(char *error, size_t size, const char *format, ...) {
     if (!error || size == 0) return;
@@ -89,6 +102,41 @@ static void media_progress(uint64_t received, uint64_t total, void *userdata) {
     LightLock_Unlock(&worker->lock);
 }
 
+static bool part_read(void *userdata, uint64_t position,
+                      void *buffer, size_t size) {
+    PartReader *reader = (PartReader *)userdata;
+    if (position > (uint64_t)LONG_MAX ||
+        fseek(reader->file, (long)position, SEEK_SET) != 0 ||
+        fread(buffer, 1, size, reader->file) != size) {
+        reader->failed = true;
+        return false;
+    }
+    return true;
+}
+
+/* Identifies the container from the flushed prefix of the .part file.  A
+ * FLAC stream reports where its frames start, past ID3 tags and embedded
+ * pictures, so playback can begin once audio rather than metadata arrives. */
+static void probe_stream(MediaWorker *worker, ProgressiveFile *stream,
+                         uint64_t published) {
+    if (!worker->probe_pending || published < worker->probe_needed) return;
+    PartReader reader = {fopen(worker->probe_path, "rb"), false};
+    if (!reader.file) return;
+    AudioProbe probe;
+    uint64_t needed = 0;
+    AudioProbeStatus status = audio_probe(part_read, &reader, published,
+                                          &probe, &needed);
+    fclose(reader.file);
+    if (reader.failed) return;
+    if (status == AUDIO_PROBE_NEED_MORE) {
+        worker->probe_needed = needed;
+        return;
+    }
+    worker->probe_pending = false;
+    progressive_file_set_probe(stream, status == AUDIO_PROBE_DONE ?
+                                       &probe : NULL);
+}
+
 static void media_publish(uint64_t published, uint64_t total, void *userdata) {
     MediaWorker *worker = (MediaWorker *)userdata;
     ProgressiveFile *stream = NULL;
@@ -98,6 +146,7 @@ static void media_publish(uint64_t published, uint64_t total, void *userdata) {
     LightLock_Unlock(&worker->lock);
     if (stream) {
         progressive_file_publish(stream, published, total);
+        probe_stream(worker, stream, published);
         progressive_file_release(stream);
     }
 }
@@ -176,6 +225,11 @@ static void run_media_job(MediaWorker *worker, const MediaJob *job,
         return;
     }
     replace_stream(worker, stream, job->song_id);
+    int probe_path = snprintf(worker->probe_path, sizeof(worker->probe_path),
+                              "%s.part", job->path);
+    worker->probe_pending = probe_path > 0 &&
+                            (size_t)probe_path < sizeof(worker->probe_path);
+    worker->probe_needed = MEDIA_PROBE_MIN_BYTES;
 
     media_status(worker, "正在预缓冲音频");
     uint64_t audio_limit = job->cache_limit ? job->cache_limit :
@@ -200,7 +254,7 @@ static void run_media_job(MediaWorker *worker, const MediaJob *job,
         return;
     }
 
-    media_status(worker, "正在准备完整 MP3 索引");
+    media_status(worker, "正在准备完整音频文件");
     if (player_prepare_audio_controlled(
             job->path, &result->prepared_audio,
             media_cancelled, worker, error, sizeof(error)) != 0) {
@@ -377,6 +431,7 @@ void media_worker_snapshot(MediaWorker *worker, MediaSnapshot *snapshot) {
         progressive_file_snapshot(stream, &progress);
         snapshot->published = progress.published;
         snapshot->prefetch_ready = progress.prefetch_ready;
+        snapshot->audio_offset = progress.audio_offset;
         progressive_file_release(stream);
     }
 }

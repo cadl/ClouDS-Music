@@ -50,6 +50,14 @@
   selection is offered under CC BY-SA 4.0; the Noto glyph data remains under
   SIL Open Font License 1.1.
 - `external/minimp3` is CC0/public domain dedication.
+- `external/dr_flac/dr_flac.h` is the unmodified dr_flac decoder from
+  [mackron/dr_libs](https://github.com/mackron/dr_libs/tree/dfe8377631000664666519fdb83da193fd8037f4)
+  commit `dfe8377631000664666519fdb83da193fd8037f4` (SHA-256
+  `111144e778f55738db6851cb226015c419e00d04b916a09506d4856d9cff945c`). It is
+  pinned after the 0.13.3 release to include later metadata bounds checks and
+  seek-recovery fixes. dr_flac is available under the Unlicense or MIT No
+  Attribution; both texts are reproduced in
+  `third_party/dr_flac-Unlicense-MIT-0.txt`.
 - `external/qrcodegen` is Project Nayuki's QR Code generator, distributed
   under the MIT License included in its source files and reproduced in
   `third_party/MIT-attributions.txt`.
