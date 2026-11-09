@@ -48,6 +48,20 @@ int main(void) {
                   "Xiaohongshu: cadl11") == 0);
     assert(strcmp(i18n_text("开源软件，免费发布"),
                   "Open source - released free") == 0);
+    assert(strcmp(i18n_text("云盘支持 MP3 和 FLAC 播放"),
+                  "Cloud MP3 and FLAC files can play") == 0);
+    assert(i18n_snprintf(status, sizeof(status),
+                         "服务端返回 %s，本机仅支持 MP3 和 FLAC", "aac") > 0);
+    assert(strcmp(status,
+                  "The server returned aac; this app supports only MP3 and FLAC") == 0);
+    assert(i18n_snprintf(status, sizeof(status),
+                         "正在下载完整 FLAC %u%%", 42U) > 0);
+    assert(strcmp(status, "Downloading full FLAC 42%") == 0);
+    assert(i18n_snprintf(status, sizeof(status),
+                         "不支持的 FLAC 格式（%d 声道，%d Hz）", 6, 48000) > 0);
+    assert(strcmp(status, "Unsupported FLAC format (6 channels, 48000 Hz)") == 0);
+    assert(strcmp(i18n_text("FLAC 需完整下载后播放"),
+                  "This FLAC plays after the full download") == 0);
     assert(strcmp(i18n_text("浏览"), "Browse") == 0);
     assert(strcmp(i18n_text("无操作"), "No action") == 0);
     assert(strcmp(i18n_text("打开网易云音乐 APP"),

@@ -28,6 +28,7 @@ tests/test_gpu_texture
 tests/test_lyric_animation
 tests/test_unicode_text
 tests/test_media_policy
+tests/test_audio_format
 tests/test_now_playing_policy
 tests/test_download_policy
 tests/test_power_policy

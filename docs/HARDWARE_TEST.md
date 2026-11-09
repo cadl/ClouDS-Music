@@ -180,29 +180,44 @@ Use a disposable test account or non-sensitive uploads. Never attach
    handoff, completion, automatic next-song selection, and offline replay from
    a complete cache. Confirm no whole compressed file or decoded PCM copy is
    retained in memory.
-4. Play a FLAC upload that the service can resolve. Confirm the list continues
-   to label the original as `FLAC`, while the playback response and cached
-   `audio.mp3` are MP3 at standard quality. The app must not feed the original
-   FLAC bytes to minimp3 or claim lossless playback.
-5. Repeat with an upload not matched to the public catalogue and with a FLAC
-   upload the service cannot transcode. The unmatched song should play when a
-   valid MP3 URL is returned; an unavailable song must show the service error
-   without bypassing region, VIP, purchase, or removal restrictions.
-6. With a controlled playback response, return `flac`, `aac`, or another
-   explicit non-MP3 `type`/`encodeType`. Confirm the request stops before media
-   download, no `.part` file remains, and the UI reports that this build only
-   supports MP3. Also test a missing format field with valid MP3 data so normal
-   decoder validation remains the fallback.
+4. Play FLAC uploads that the service returns as `flac`: 16-bit/44.1 kHz
+   stereo with and without a large embedded cover, 24-bit/96 kHz stereo, mono,
+   and a file with an ID3v2 prefix. Confirm playback starts only after audio
+   frames rather than cover bytes are prebuffered, duration and progress are
+   correct, the stream hands off to the complete file without an audible gap,
+   seeking works once the download completes, and the cached `audio.mp3`
+   (which keeps the original FLAC bytes; the file name is unchanged for cache
+   compatibility) replays offline after a restart. With debug logging enabled,
+   confirm `hardware.log` records `stream_open_ok`.
+5. Play a 176.4/192 kHz FLAC. Confirm the status shows the full-download
+   percentage, no stream is opened early, `hardware.log` records
+   `stream_deferred`, and playback starts from the complete file when the
+   download finishes. Play FLAC files with more than two channels and above
+   384 kHz and confirm a clear unsupported-format error without a crash. Repeat
+   with an upload not matched to the public catalogue; an unavailable song must
+   show the service error without bypassing region, VIP, purchase, or removal
+   restrictions.
+6. With a controlled playback response, return `aac`, `m4a`, or another
+   explicit format other than MP3 and FLAC in `type`/`encodeType`. Confirm the
+   request stops before media download, no `.part` file remains, and the UI
+   reports that this build supports only MP3 and FLAC. Also test a missing
+   format field with valid MP3 and FLAC data so content detection remains the
+   fallback, and corrupt the header of a cached FLAC to confirm it is removed
+   and downloaded again.
 7. Fully cache a private cloud song, restart, then log out and switch to a
    different account. Confirm the saved queue entry and its full cache cannot
    be played or prefetched by the other account. Log back into the owner account
    and confirm access returns. A trial cache must continue to follow the normal
    trial policy rather than exposing a private full file.
-8. On an Old 3DS/2DS, page through a large cloud, start a FLAC-origin song that
-   resolves to MP3, reopen the page during playback, and monitor `heap_free`,
-   `linear_free`, input latency, SD writes, underruns, and sleep/resume. Memory
-   headroom must remain stable and the growing `.part` file must continue to use
-   the existing low-priority prefetch path.
+8. On an Old 3DS/2DS, page through a large cloud, stream a 16-bit/44.1 kHz and
+   a 24-bit/96 kHz FLAC, reopen the page during playback, and monitor
+   `heap_free`, `linear_free`, input latency, UI frame rate, SD writes,
+   underruns, and sleep/resume. Memory headroom must remain stable and the
+   growing `.part` file must continue to use the existing low-priority prefetch
+   path. Throttle Wi-Fi below the FLAC bitrate and confirm buffering pauses
+   cleanly, waits for roughly four seconds of audio, and resumes without
+   repeated stutter. Seek repeatedly in a complete FLAC longer than five minutes
+   and confirm each seek finishes without a noticeable UI stall.
 
 ## Playback
 
